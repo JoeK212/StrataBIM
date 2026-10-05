@@ -1,0 +1,1673 @@
+<!DOCTYPE html>
+<!--
+STRATA
+3D building dashboard — colours each zone of a 7-floor office by power, HVAC, temperature or occupancy (simulated feed for now)
+Joe.K · axisbim.io
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="STRATA is a browser dashboard that colours a 3D building model by live power, HVAC, temperature and occupancy data.">
+<meta name="theme-color" content="#0E1220" id="themeColorMeta">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>STRATA · Building dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#0E1220;
+  --card:#141829;
+  --ink:#E7E4F4;
+  --accent:#7C5CFC;
+  --muted:#8F8BAE;
+  --line:#262B47;
+  --warn:#FFC857;
+  --hot:#E85FA0;
+  --on-accent:#FFFFFF;
+  --scrim:rgba(5,7,14,0.7);
+  color-scheme:dark;
+  --sans:'Space Grotesk','Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'Space Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+:root[data-theme="light"]{
+  --paper:#F2F0FA;
+  --card:#FFFFFF;
+  --ink:#171330;
+  --accent:#5B3FE0;
+  --muted:#6C6888;
+  --line:#D8D3EC;
+  --warn:#9A6414;
+  --hot:#C23B7E;
+  --on-accent:#FFFFFF;
+  --scrim:rgba(23,19,48,0.55);
+  color-scheme:light;
+}
+*{box-sizing:border-box;border-radius:0}
+html,body{margin:0;height:100%}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:14px;
+  line-height:1.45;
+  overscroll-behavior-y:contain;
+  -webkit-text-size-adjust:100%;
+}
+button{
+  font:inherit;
+  color:var(--ink);
+  background:var(--card);
+  border:1px solid var(--line);
+  padding:6px 12px;
+  min-height:36px;
+  cursor:pointer;
+}
+button:hover{border-color:var(--accent)}
+button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a{color:var(--accent)}
+.shell{display:flex;flex-direction:column;height:100dvh}
+.top{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  padding:10px 16px;
+  padding-top:calc(10px + env(safe-area-inset-top, 0px));
+  padding-left:calc(16px + env(safe-area-inset-left, 0px));
+  padding-right:calc(16px + env(safe-area-inset-right, 0px));
+  border-bottom:1px solid var(--line);
+  background:var(--card);
+}
+.brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.brand h1{margin:0;font-size:20px;font-weight:700;letter-spacing:0.14em}
+.brand span{font-size:13px;color:var(--muted)}
+.tools{display:flex;gap:8px;align-items:center}
+.seg{display:flex}
+.seg button{margin-left:-1px;flex:1 1 auto}
+.seg button:first-child{margin-left:0}
+.main{
+  flex:1 1 auto;min-height:0;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 340px;
+  grid-template-rows:minmax(0,1fr) auto;
+  grid-template-areas:"stage panel" "transport panel";
+}
+.stage{grid-area:stage;position:relative;min-height:0;overflow:hidden}
+#view{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#view:active{cursor:grabbing}
+.floors{
+  position:absolute;left:12px;top:50%;transform:translateY(-50%);
+  display:flex;flex-direction:column;gap:4px;
+}
+.floors button{min-width:40px;min-height:34px;padding:4px 8px;font-family:var(--mono);font-size:13px}
+.legend{position:absolute;left:68px;bottom:14px;right:14px;max-width:320px;pointer-events:none}
+.legend .lt{font-size:12px;color:var(--muted);margin-bottom:4px}
+.legend .bar{height:8px;border:1px solid var(--line)}
+.legend .lv{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;margin-top:3px}
+.tip{
+  position:absolute;pointer-events:none;
+  background:var(--card);border:1px solid var(--accent);
+  padding:4px 8px;font-family:var(--mono);font-size:12px;white-space:nowrap;
+}
+.transport{
+  grid-area:transport;
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:10px 16px;
+  padding-left:calc(16px + env(safe-area-inset-left, 0px));
+  border-top:1px solid var(--line);
+  background:var(--card);
+}
+.scrubwrap{flex:1 1 240px;min-width:200px}
+.scrubwrap input[type=range]{width:100%;margin:0;accent-color:var(--accent)}
+.ticks{display:grid;grid-template-columns:repeat(7,1fr);font-size:11px;color:var(--muted);font-family:var(--mono)}
+.clock{font-family:var(--mono);font-size:14px;font-weight:700;min-width:150px;text-align:right}
+.panel{
+  grid-area:panel;overflow-y:auto;
+  border-left:1px solid var(--line);background:var(--card);
+  padding-right:env(safe-area-inset-right, 0px);
+}
+.sec{padding:14px 16px;border-bottom:1px solid var(--line)}
+.h{margin:0 0 8px;font-size:13px;font-weight:600;color:var(--muted)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line)}
+.stat{background:var(--card);padding:8px 10px}
+.stat b{display:block;font-family:var(--mono);font-size:17px;font-weight:700}
+.stat i{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.stat span{display:block;font-size:12px;color:var(--muted)}
+#chart{width:100%;height:120px;display:block;border:1px solid var(--line)}
+.axis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:3px}
+.row{display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row span{color:var(--muted)}
+.row b{font-family:var(--mono);font-weight:700;text-align:right}
+.row i{font-style:normal;font-weight:400;color:var(--muted);font-size:11px;margin-left:6px}
+.empty{color:var(--muted);margin:0}
+.alerts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.alerts button{width:100%;text-align:left;display:flex;justify-content:space-between;gap:8px;border-left:3px solid var(--warn)}
+.alerts button.hot{border-left-color:var(--hot)}
+.alerts small{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.note{margin:0 0 10px;color:var(--muted);font-size:13px}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+.floors{max-height:calc(100% - 24px);overflow-y:auto}
+.stage.drop::after{content:'Drop the model file to load it';position:absolute;inset:8px;border:2px dashed var(--accent);display:flex;align-items:center;justify-content:center;background:var(--scrim);color:var(--ink);font-size:16px;pointer-events:none}
+button:disabled{opacity:0.45;cursor:default}
+button:disabled:hover{border-color:var(--line)}
+.foot{
+  padding:8px 16px;
+  padding-bottom:calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top:1px solid var(--line);
+  font-size:12px;color:var(--muted);background:var(--card);
+}
+.foot a{color:inherit}
+.toast{
+  position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(24px + env(safe-area-inset-bottom, 0px));
+  background:var(--ink);color:var(--paper);
+  padding:10px 16px;font-size:13px;
+  opacity:0;pointer-events:none;transition:opacity 0.2s;z-index:50;
+}
+.toast.show{opacity:1}
+.modal{position:fixed;inset:0;background:var(--scrim);display:flex;align-items:center;justify-content:center;padding:16px;z-index:60}
+.modal[hidden]{display:none}
+.modal-card{background:var(--card);border:1px solid var(--line);padding:20px;max-width:360px;width:100%}
+.modal-card p{margin:0 0 16px}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end}
+.help-card{max-width:600px;max-height:calc(100dvh - 32px);overflow-y:auto;padding:22px 24px}
+.help-card h2{margin:0 0 4px;font-size:20px}
+.help-card h3{margin:20px 0 6px;font-size:15px}
+.help-card p{margin:0 0 8px}
+.help-card .lead{color:var(--muted);margin-bottom:4px}
+.help-card dl{margin:0 0 8px}
+.help-card dt{font-weight:600;margin-top:8px}
+.help-card dd{margin:0;color:var(--muted)}
+.help-card ul{margin:0 0 8px;padding-left:18px}
+.help-card li{margin-bottom:4px}
+.help-card .sw{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px;border:1px solid var(--line)}
+.help-card .close{position:sticky;bottom:-22px;margin:16px 0 -22px;padding:12px 0;background:var(--card);display:flex;justify-content:flex-end}
+@media (max-width:860px){
+  .shell{height:auto;min-height:100dvh}
+  .main{
+    display:flex;flex-direction:column;
+  }
+  .stage{height:58dvh;min-height:340px;flex:0 0 auto}
+  .panel{border-left:0;border-top:1px solid var(--line);overflow:visible}
+  .clock{text-align:left}
+  .legend{left:64px}
+}
+@media (prefers-reduced-motion:reduce){
+  .toast{transition:none}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="top">
+    <div class="brand">
+      <h1>STRATA</h1>
+      <span id="brandSub">Simulated office feed</span>
+    </div>
+    <div class="tools">
+      <div class="seg" id="unitSeg" role="group" aria-label="Units">
+        <button type="button" data-u="imperial" aria-pressed="true">Imperial</button>
+        <button type="button" data-u="metric" aria-pressed="false">Metric</button>
+      </div>
+      <button type="button" id="themeBtn">Light</button>
+      <button type="button" id="helpBtn" aria-haspopup="dialog">Help</button>
+    </div>
+  </header>
+  <main class="main" id="main">
+    <section class="stage" id="stage">
+      <canvas id="view" aria-label="3D building model"></canvas>
+      <div class="floors" id="floors" role="group" aria-label="Floor filter"></div>
+      <div class="legend">
+        <div class="lt" id="legendTitle"></div>
+        <div class="bar" id="legendBar"></div>
+        <div class="lv"><span id="legendLo"></span><span id="legendHi"></span></div>
+      </div>
+      <div class="tip" id="tip" hidden></div>
+    </section>
+    <div class="transport">
+      <button type="button" id="playBtn" aria-label="Pause">Pause</button>
+      <div class="seg" id="speedSeg" role="group" aria-label="Replay speed"></div>
+      <div class="scrubwrap">
+        <input type="range" id="scrub" min="0" max="10079" step="1" value="540" aria-label="Replay time">
+        <div class="ticks"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
+      </div>
+      <div class="clock" id="clock"></div>
+    </div>
+    <aside class="panel" id="panel">
+      <section class="sec">
+        <h2 class="h">Colour zones by</h2>
+        <div class="seg" id="layerSeg" role="group" aria-label="Layer"></div>
+      </section>
+      <section class="sec">
+        <h2 class="h">Building now</h2>
+        <div class="stats" id="stats"></div>
+      </section>
+      <section class="sec">
+        <h2 class="h" id="chartTitle"></h2>
+        <canvas id="chart" aria-label="24 hour trend"></canvas>
+        <div class="axis"><span>24 h ago</span><span>now</span></div>
+      </section>
+      <section class="sec">
+        <h2 class="h" id="zoneTitle">Zone</h2>
+        <div id="zoneCard"></div>
+      </section>
+      <section class="sec">
+        <h2 class="h">Alerts</h2>
+        <ul class="alerts" id="alerts"></ul>
+      </section>
+      <section class="sec">
+        <h2 class="h">Simulation</h2>
+        <p class="note" id="simSummary"></p>
+        <p class="note" id="simNote"></p>
+        <div class="btnrow">
+          <button type="button" id="reseed">New simulated building</button>
+          <button type="button" id="refBtn">Reference office</button>
+        </div>
+        <h2 class="h" style="margin-top:16px">Your building</h2>
+        <p class="note">Load a model exported from Revit to run this dashboard on your own rooms. Drop the file on the model, or choose it here.</p>
+        <button type="button" id="loadModel">Load Revit model</button>
+        <input type="file" id="modelFile" accept=".json,application/json" hidden>
+      </section>
+    </aside>
+  </main>
+  <footer class="foot" id="footVersion"></footer>
+</div>
+<div class="toast" id="toast"></div>
+<div class="modal" id="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalMsg">
+    <p id="modalMsg"></p>
+    <div class="modal-actions">
+      <button type="button" id="modalCancel">Cancel</button>
+      <button type="button" id="modalOk" aria-pressed="true"></button>
+    </div>
+  </div>
+</div>
+<div class="modal" id="help" hidden>
+  <div class="modal-card help-card" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <h2 id="helpTitle">How to read STRATA</h2>
+    <p class="lead">A 3D model of a seven-floor office. Each box is a zone, coloured by the layer you pick. The numbers are generated for now, not measured (see About the data).</p>
+
+    <h3>Move around</h3>
+    <ul>
+      <li>Drag to rotate. Scroll or pinch to zoom.</li>
+      <li>Click or tap a zone to see its readings. Click or tap empty space to clear it.</li>
+      <li>The number buttons on the left isolate one floor. All brings every floor back.</li>
+    </ul>
+
+    <h3>Layers</h3>
+    <dl>
+      <dt>Power</dt>
+      <dd>Everything a zone draws: HVAC, lighting and plug loads added together.</dd>
+      <dt>HVAC</dt>
+      <dd>Heating, cooling and ventilation only. In this model it is the biggest and most variable part.</dd>
+      <dt>Temp</dt>
+      <dd>Indoor air temperature in the zone.</dd>
+      <dt>People</dt>
+      <dd>Estimated occupants as a share of what the zone holds.</dd>
+    </dl>
+    <p>The legend shows the colour range for the layer you picked: dark is low, violet is middle, pink is high, amber is highest. The range is fixed for the building you are viewing, so a colour means the same thing at any time and in any zone. Power and HVAC ranges are sized to each building's own week.</p>
+
+    <h3>Timeline</h3>
+    <ul>
+      <li>The scrubber covers one week, Monday to Sunday, and loops at the end.</li>
+      <li>Speed is a multiple of real time. 1× is real time, 60× is one simulated minute per second, 600× is ten minutes per second, 3600× is one hour per second.</li>
+      <li>The trend chart always shows the 24 hours before the time on the clock, for the whole building or the zone you selected.</li>
+    </ul>
+
+    <h3>Alerts</h3>
+    <dl>
+      <dt>After-hours cooling</dt>
+      <dd>A zone is using more than 2 kW of HVAC power while the building is scheduled off.</dd>
+      <dt>Running warm</dt>
+      <dd>A zone with people in it is above 26 °C (79 °F).</dd>
+    </dl>
+    <p>Click an alert to jump to that zone.</p>
+
+    <h3>Use your own Revit model</h3>
+    <ul>
+      <li>In Revit, place Rooms where you want zones. Optional: add a text parameter STRATA_Zone to group rooms into one zone, and STRATA_Sensor to tag a zone with a sensor ID.</li>
+      <li>In Dynamo, add a Python Script node, set it to CPython3, paste in tools/revit_export_rooms.py and run it. It reads the model and writes a small JSON file; it changes nothing in Revit.</li>
+      <li>Choose Load Revit model in the Simulation section, or drop the file onto the model. Your levels and rooms replace the generated building.</li>
+    </ul>
+    <p>The readings on an imported model are still simulated. Remove model returns to the reference office.</p>
+
+    <h3>Units</h3>
+    <p>Imperial and Metric change how values display. Power (kW) and energy (kWh) are the same in both. In the zone card, temperature, area and light level show the other unit beside the main value.</p>
+
+    <h3>About the data</h3>
+    <p>Everything here is simulated from an office schedule and a placeholder outdoor temperature curve. Two faults are planted so the alerts have something to find: stuck cooling in one zone overnight, and a cooling failure in another zone for a few daytime hours. The Simulation note at the bottom of the panel says which zones and when.</p>
+    <p>New simulated building changes the number of floors and zones, the footprint, the weekday schedule or the climate (a hotter or colder city shifts cooling and heating), and where the faults land. Reference office returns to the default seven-floor, 33-zone building.</p>
+    <p>The plan is to replace the simulation with measured data from the CU-BEMS office dataset, plus real New York weather. The viewer will not change.</p>
+
+    <h3>Terms</h3>
+    <dl>
+      <dt>kW and kWh</dt>
+      <dd>kW is how fast power is being used right now. kWh is energy over time: 1 kW running for one hour is 1 kWh.</dd>
+      <dt>HVAC</dt>
+      <dd>Heating, ventilation and air conditioning.</dd>
+      <dt>Plug loads</dt>
+      <dd>Equipment plugged into outlets, such as computers, monitors and chargers.</dd>
+      <dt>Zone</dt>
+      <dd>A section of a floor served by one set of meters and sensors.</dd>
+    </dl>
+    <div class="close"><button type="button" id="helpClose" aria-pressed="true">Close</button></div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const APP_VERSION = '1.2.0';
+const TOOL_NAME = 'STRATA';
+
+const MIN_PER_DAY = 1440;
+const DAYS = 7;
+const TOTAL_MIN = DAYS * MIN_PER_DAY;
+const BASE_DATE = new Date(2026, 9, 5);
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const REF_FLOORS = [5, 5, 5, 5, 5, 4, 4];
+const ARCHETYPES = [
+  { name: 'Standard office', desc: 'Typical weekday schedule in a mild climate.', shift: 0, weekend: 0.03, climate: 0 },
+  { name: 'Early-start office', desc: 'Staff arrive and leave about 90 minutes earlier.', shift: -1.5, weekend: 0.03, climate: 0 },
+  { name: 'Late-start studio', desc: 'Later start, later finish, and some weekend work.', shift: 1.5, weekend: 0.18, climate: 0 },
+  { name: 'Hot-climate office', desc: 'Same schedule in a climate 8 °C (14 °F) warmer, so cooling dominates.', shift: 0, weekend: 0.03, climate: 8 },
+  { name: 'Cold-climate office', desc: 'Same schedule in a climate 10 °C (18 °F) colder, so heating shows up.', shift: 0, weekend: 0.03, climate: -10 }
+];
+const FLOOR_H = 3.3;
+const FLOOR_PITCH = 4;
+const GAP = 0.5;
+const SQM_TO_SQFT = 10.7639;
+const DEFAULT_SEED = 20261005;
+const MODEL_SCHEMA = 'strata-model-1';
+const MAX_MODEL_ZONES = 600;
+const MAX_MODEL_POINTS = 250000;
+const MAX_MODEL_BYTES = 25 * 1024 * 1024;
+const STORE_MODEL_CHARS = 3500000;
+const SPEEDS = [1, 60, 600, 3600];
+const STOPS = [[0, '#1D2550'], [0.4, '#6A4CF0'], [0.75, '#E85FA0'], [1, '#FFC857']];
+const REDUCE_MOTION = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const LAYERS = {
+  power: { label: 'Power', title: 'Power', get: r => r.kwTotal, lo: 0, hi: 18, kind: 'kw', agg: 'sum', hint: 'HVAC, lighting and plug loads combined' },
+  hvac: { label: 'HVAC', title: 'HVAC power', get: r => r.kwAC, lo: 0, hi: 12, kind: 'kw', agg: 'sum', hint: 'Heating, cooling and ventilation only' },
+  temp: { label: 'Temp', title: 'Indoor temperature', get: r => r.T, lo: 20, hi: 28, kind: 'temp', agg: 'mean', hint: 'Indoor air temperature' },
+  occ: { label: 'People', title: 'Occupancy', get: r => r.f * 100, lo: 0, hi: 100, kind: 'pct', agg: 'mean', hint: 'Estimated occupants as a share of capacity' }
+};
+
+Object.keys(LAYERS).forEach(k => { LAYERS[k].id = k; });
+
+const state = {
+  model: null,
+  seed: DEFAULT_SEED,
+  layer: 'power',
+  units: 'imperial',
+  theme: 'dark',
+  floor: -1,
+  sel: null,
+  playing: !REDUCE_MOTION,
+  speed: 600,
+  t: 9 * 60,
+  lastUI: 0,
+  lastFrame: 0
+};
+
+let layout = null;
+let ranges = null;
+let zones = [];
+let faults = [];
+let cur = [];
+let meshes = [];
+let slabs = [];
+let hoverIdx = -1;
+let toastTimer = 0;
+
+const $ = s => document.querySelector(s);
+
+function store(k, v) {
+  try { localStorage.setItem('strata.' + k, String(v)); } catch (e) { }
+}
+function load(k, d) {
+  try {
+    const v = localStorage.getItem('strata.' + k);
+    return v === null ? d : v;
+  } catch (e) { return d; }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function escapeAttr(s) {
+  return escapeHtml(s);
+}
+
+function toast(msg) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+function confirmDialog(message, confirmLabel) {
+  return new Promise(resolve => {
+    const modal = $('#modal');
+    const ok = $('#modalOk');
+    const cancel = $('#modalCancel');
+    $('#modalMsg').textContent = message;
+    ok.textContent = confirmLabel || 'Confirm';
+    modal.hidden = false;
+    ok.focus();
+    function done(v) {
+      modal.hidden = true;
+      ok.removeEventListener('click', onOk);
+      cancel.removeEventListener('click', onCancel);
+      document.removeEventListener('keydown', onKey);
+      resolve(v);
+    }
+    function onOk() { done(true); }
+    function onCancel() { done(false); }
+    function onKey(e) { if (e.key === 'Escape') done(false); }
+    ok.addEventListener('click', onOk);
+    cancel.addEventListener('click', onCancel);
+    document.addEventListener('keydown', onKey);
+  });
+}
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function hash01(a, b) {
+  let h = Math.imul(a | 0, 0x9E3779B1) ^ Math.imul(b | 0, 0x85EBCA6B);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xC2B2AE35);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function smoothNoise(seed, t, period) {
+  const x = t / period;
+  const i = Math.floor(x);
+  const f = x - i;
+  const u = f * f * (3 - 2 * f);
+  return hash01(seed, i) * (1 - u) + hash01(seed, i + 1) * u;
+}
+function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
+function smooth(x, a, b) {
+  const u = clamp((x - a) / (b - a), 0, 1);
+  return u * u * (3 - 2 * u);
+}
+function wrap(m) { return ((m % TOTAL_MIN) + TOTAL_MIN) % TOTAL_MIN; }
+
+function makeLayoutRaw(seed) {
+  if (seed === DEFAULT_SEED) {
+    return Object.assign({ floors: REF_FLOORS.slice(), w: 56, d: 30, ref: true }, ARCHETYPES[0], { name: 'Reference office' });
+  }
+  const rnd = mulberry32(seed ^ 0x2545F491);
+  const arch = ARCHETYPES[Math.floor(rnd() * ARCHETYPES.length)];
+  const nf = 4 + Math.floor(rnd() * 7);
+  const base = 3 + Math.floor(rnd() * 4);
+  const floors = [];
+  for (let i = 0; i < nf; i++) floors.push(clamp(base + Math.floor(rnd() * 3) - 1, 3, 7));
+  return Object.assign({ floors: floors, w: Math.round(40 + rnd() * 32), d: Math.round(22 + rnd() * 14), ref: false }, arch);
+}
+
+function finishLayout(L) {
+  L.elev = L.floors.map((n, f) => f * FLOOR_PITCH);
+  L.h = L.floors.map(() => FLOOR_H);
+  L.top = L.floors.length * FLOOR_PITCH;
+  L.levelNames = L.floors.map((n, f) => 'Floor ' + (f + 1));
+  L.sub = 'Simulated ' + L.name.toLowerCase();
+  L.imported = false;
+  return L;
+}
+
+function makeLayout(seed) {
+  return finishLayout(makeLayoutRaw(seed));
+}
+
+function polyArea(pts) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const q = pts[(i + 1) % pts.length];
+    a += p[0] * q[1] - q[0] * p[1];
+  }
+  return Math.abs(a) / 2;
+}
+
+function checkModel(o) {
+  if (!o || typeof o !== 'object') return 'The file is not a STRATA model.';
+  if (o.schema !== MODEL_SCHEMA) return 'This is not a STRATA model file (expected schema ' + MODEL_SCHEMA + '). Export it with tools/revit_export_rooms.py.';
+  if (!Array.isArray(o.levels) || !o.levels.length) return 'The model has no levels.';
+  if (!Array.isArray(o.zones) || !o.zones.length) return 'The model has no zones.';
+  if (o.zones.length > MAX_MODEL_ZONES) return 'The model has ' + o.zones.length + ' zones; the limit is ' + MAX_MODEL_ZONES + '. Group rooms with STRATA_Zone or Department when exporting.';
+  for (const l of o.levels) {
+    if (!Number.isFinite(l.elevation) || !Number.isFinite(l.height) || l.height <= 0) return 'A level is missing its elevation or height.';
+  }
+  let pts = 0;
+  for (const z of o.zones) {
+    const nm = String(z.name || 'unnamed');
+    if (!Number.isInteger(z.level) || z.level < 0 || z.level >= o.levels.length) return 'Zone "' + nm + '" points to a level that does not exist.';
+    if (!Array.isArray(z.rooms) || !z.rooms.length) return 'Zone "' + nm + '" has no rooms.';
+    for (const r of z.rooms) {
+      const loops = [r.boundary].concat(Array.isArray(r.holes) ? r.holes : []);
+      for (const lp of loops) {
+        if (!Array.isArray(lp) || lp.length < 3) return 'A room outline in zone "' + nm + '" has fewer than 3 points.';
+        for (const q of lp) {
+          if (!Array.isArray(q) || !Number.isFinite(q[0]) || !Number.isFinite(q[1])) return 'A room outline in zone "' + nm + '" has a point that is not a pair of numbers.';
+          pts++;
+        }
+      }
+    }
+  }
+  if (pts > MAX_MODEL_POINTS) return 'The model has ' + pts + ' outline points; the limit is ' + MAX_MODEL_POINTS + '.';
+  return '';
+}
+
+function normalizeModel(o) {
+  const order = o.levels.map((l, i) => i).sort((a, b) => o.levels[a].elevation - o.levels[b].elevation);
+  const remap = {};
+  order.forEach((oldIdx, newIdx) => { remap[oldIdx] = newIdx; });
+  const levels = order.map(i => ({
+    name: String(o.levels[i].name || 'Level'),
+    elevation: o.levels[i].elevation,
+    height: o.levels[i].height
+  }));
+  const zonesOut = o.zones.map(z => {
+    const rooms = z.rooms.map(r => ({
+      id: String(r.id || ''),
+      number: String(r.number || ''),
+      name: String(r.name || ''),
+      boundary: r.boundary,
+      holes: Array.isArray(r.holes) ? r.holes : []
+    }));
+    let area = Number.isFinite(z.area) && z.area > 0 ? z.area : 0;
+    if (!area) rooms.forEach(r => { area += polyArea(r.boundary) - r.holes.reduce((a, h) => a + polyArea(h), 0); });
+    return {
+      id: String(z.id || ''),
+      name: String(z.name || 'Zone'),
+      level: remap[z.level],
+      sensor: String(z.sensor || ''),
+      area: Math.max(1, area),
+      rooms: rooms
+    };
+  });
+  zonesOut.sort((a, b) => a.level - b.level || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return { schema: MODEL_SCHEMA, project: String(o.project || 'Imported model'), levels: levels, zones: zonesOut };
+}
+
+function modelBounds(model) {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  model.zones.forEach(z => z.rooms.forEach(r => r.boundary.forEach(p => {
+    if (p[0] < x0) x0 = p[0];
+    if (p[0] > x1) x1 = p[0];
+    if (p[1] < y0) y0 = p[1];
+    if (p[1] > y1) y1 = p[1];
+  })));
+  return { x0: x0, x1: x1, y0: y0, y1: y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, w: x1 - x0, d: y1 - y0 };
+}
+
+function layoutFromModel(model) {
+  const b = modelBounds(model);
+  const counts = model.levels.map(() => 0);
+  let rooms = 0;
+  model.zones.forEach(z => { counts[z.level]++; rooms += z.rooms.length; });
+  const e0 = model.levels[0].elevation;
+  const last = model.levels.length - 1;
+  return {
+    name: model.project,
+    desc: 'Imported from Revit: ' + rooms + ' rooms in ' + model.zones.length + ' zones. The readings are still simulated.',
+    floors: counts,
+    w: b.w,
+    d: b.d,
+    cx: b.cx,
+    cy: b.cy,
+    elev: model.levels.map(l => l.elevation - e0),
+    h: model.levels.map(l => l.height),
+    top: model.levels[last].elevation - e0 + model.levels[last].height,
+    levelNames: model.levels.map(l => l.name),
+    sub: 'Simulated feed on ' + model.project,
+    shift: 0,
+    weekend: 0.03,
+    climate: 0,
+    ref: false,
+    imported: true
+  };
+}
+
+function zonesFromModel(model, seed) {
+  const rnd = mulberry32(seed);
+  const perLevel = model.levels.map(() => 0);
+  return model.zones.map((mz, idx) => {
+    const density = 8 + rnd() * 6;
+    return {
+      i: idx,
+      floor: mz.level,
+      index: perLevel[mz.level]++,
+      name: mz.name,
+      area: mz.area,
+      cap: Math.max(2, Math.round(mz.area / density)),
+      util: 0.55 + 0.45 * rnd(),
+      arrive: (rnd() - 0.5) * 40,
+      lightW: 6 + rnd() * 4,
+      plugW: 4 + rnd() * 5,
+      acEff: 0.8 + rnd() * 0.5,
+      bias: (rnd() - 0.5) * 1.6,
+      win: rnd(),
+      seed: (seed * 7919 + idx * 104729) | 0,
+      rooms: mz.rooms,
+      nrooms: mz.rooms.length,
+      sensor: mz.sensor
+    };
+  });
+}
+
+function buildZones(seed) {
+  const rnd = mulberry32(seed);
+  const list = [];
+  layout.floors.forEach((n, f) => {
+    const rowA = Math.ceil(n / 2);
+    const rows = [
+      { count: rowA, z0: -layout.d / 2, z1: -GAP / 2 },
+      { count: n - rowA, z0: GAP / 2, z1: layout.d / 2 }
+    ];
+    let k = 0;
+    rows.forEach(r => {
+      const w = layout.w / r.count;
+      for (let i = 0; i < r.count; i++) {
+        const x0 = -layout.w / 2 + i * w + GAP / 2;
+        const x1 = -layout.w / 2 + (i + 1) * w - GAP / 2;
+        const idx = list.length;
+        const area = (x1 - x0) * (r.z1 - r.z0);
+        const density = 8 + rnd() * 6;
+        list.push({
+          i: idx,
+          floor: f,
+          index: k,
+          name: 'F' + (f + 1) + '-Z' + (k + 1),
+          w: x1 - x0,
+          d: r.z1 - r.z0,
+          cx: (x0 + x1) / 2,
+          cz: (r.z0 + r.z1) / 2,
+          area: area,
+          cap: Math.max(2, Math.round(area / density)),
+          util: 0.55 + 0.45 * rnd(),
+          arrive: (rnd() - 0.5) * 40,
+          lightW: 6 + rnd() * 4,
+          plugW: 4 + rnd() * 5,
+          acEff: 0.8 + rnd() * 0.5,
+          bias: (rnd() - 0.5) * 1.6,
+          win: rnd(),
+          seed: (seed * 7919 + idx * 104729) | 0
+        });
+        k++;
+      }
+    });
+  });
+  return list;
+}
+
+function buildFaults(seed, count) {
+  const rnd = mulberry32(seed ^ 0x5bd1e995);
+  const a = Math.floor(rnd() * count);
+  let b = Math.floor(rnd() * count);
+  if (b === a) b = (a + 1) % count;
+  const dA = seed === DEFAULT_SEED ? 2 : 1 + Math.floor(rnd() * 3);
+  const dB = seed === DEFAULT_SEED ? 3 : 1 + Math.floor(rnd() * 4);
+  return [
+    { zone: a, kind: 'stuck', start: dA * MIN_PER_DAY + 19 * 60, end: (dA + 1) * MIN_PER_DAY + 6 * 60 },
+    { zone: b, kind: 'fail', start: dB * MIN_PER_DAY + 11 * 60, end: dB * MIN_PER_DAY + 16 * 60 }
+  ];
+}
+
+function faultFactor(z, m, kind) {
+  let v = 0;
+  for (const f of faults) {
+    if (f.zone === z.i && f.kind === kind) {
+      v += smooth(m, f.start, f.start + 30) - smooth(m, f.end, f.end + 30);
+    }
+  }
+  return clamp(v, 0, 1);
+}
+
+function schedS(m) {
+  const d = Math.floor(m / MIN_PER_DAY);
+  const t = (m - d * MIN_PER_DAY) / 60;
+  if (d > 4) return layout.weekend > 0.1 ? 0.6 * (smooth(t, 8, 9.5) - smooth(t, 16, 17.5)) : 0;
+  const u = t - layout.shift;
+  return smooth(u, 6, 7.5) - smooth(u, 19, 20.5);
+}
+
+function occFrac(m, z) {
+  const d = Math.floor(m / MIN_PER_DAY);
+  const mm = m - d * MIN_PER_DAY;
+  let f = 0.03;
+  if (d > 4 && layout.weekend > 0.1) {
+    const t = (mm - z.arrive) / 60;
+    f = 0.03 + layout.weekend * (smooth(t, 9, 11) - smooth(t, 16, 18));
+  }
+  if (d < 5) {
+    const t = (mm - z.arrive) / 60 - layout.shift;
+    f = smooth(t, 7.5, 9.5) - smooth(t, 17, 19);
+    const lunch = 0.4 * (smooth(t, 11.8, 12.4) - smooth(t, 13.2, 13.8));
+    f = Math.max(f - lunch * f, 0.03);
+  }
+  f = f * z.util * (0.85 + 0.3 * smoothNoise(z.seed, m, 25));
+  return clamp(f, 0, 1);
+}
+
+function outdoorC(m) {
+  const h = (m % MIN_PER_DAY) / 60;
+  const base = 14 + (smoothNoise(state.seed + 11, m, MIN_PER_DAY) - 0.5) * 7;
+  return base + layout.climate + 5.5 * Math.sin((h - 9) / 24 * 2 * Math.PI);
+}
+
+function sample(z, m) {
+  const f = occFrac(m, z);
+  const s = schedS(m);
+  const to = outdoorC(m);
+  const h = (m % MIN_PER_DAY) / 60;
+  const day = h > 6 && h < 18 ? Math.sin(Math.PI * (h - 6) / 12) : 0;
+  const stuck = faultFactor(z, m, 'stuck');
+  const fail = faultFactor(z, m, 'fail');
+  const lightLevel = clamp(0.05 + 0.95 * Math.min(1, f * 1.3) * (1 - 0.3 * day * z.win), 0, 1);
+  const kwLight = z.area * z.lightW * lightLevel / 1000;
+  const kwPlug = z.area * z.plugW * (0.3 + 0.7 * f) / 1000;
+  const cool = 38 * clamp((to - 10) / 16, 0, 1) * (0.35 + 0.65 * f) * z.acEff * s;
+  const heat = 20 * clamp((8 - to) / 12, 0, 1) * s;
+  const fan = 5 * s + 0.3;
+  let kwAC = z.area * (fan + cool + heat) / 1000;
+  kwAC = kwAC * (1 - 0.8 * fail) + z.area * 24 / 1000 * stuck;
+  const tDay = 23 + z.bias + 0.08 * (to - 18) + 1.2 * f;
+  const tNight = 23 + z.bias + 0.2 * (to - 23);
+  const T = s * tDay + (1 - s) * tNight + 3.5 * fail * s - 1.5 * stuck * (1 - s) + (smoothNoise(z.seed + 1, m, 30) - 0.5) * 0.4;
+  const RH = clamp(52 - 1.0 * (T - 23) + 0.4 * (to - 15) + (smoothNoise(z.seed + 2, m, 60) - 0.5) * 8, 25, 80);
+  const lux = Math.round(60 + 440 * lightLevel + 230 * day * z.win);
+  return {
+    f: f,
+    occ: Math.round(f * z.cap),
+    s: s,
+    to: to,
+    kwLight: kwLight,
+    kwPlug: kwPlug,
+    kwAC: kwAC,
+    kwTotal: kwLight + kwPlug + kwAC,
+    T: T,
+    RH: RH,
+    lux: lux
+  };
+}
+
+function conv(kind, v) {
+  if (state.units === 'imperial') {
+    if (kind === 'temp') return v * 9 / 5 + 32;
+    if (kind === 'area') return v * SQM_TO_SQFT;
+    if (kind === 'lux') return v / SQM_TO_SQFT;
+  }
+  return v;
+}
+function convAlt(kind, v) {
+  const saved = state.units;
+  state.units = saved === 'imperial' ? 'metric' : 'imperial';
+  const out = conv(kind, v);
+  const label = unitLabel(kind);
+  state.units = saved;
+  return { v: out, label: label };
+}
+function unitLabel(kind) {
+  const imp = state.units === 'imperial';
+  if (kind === 'temp') return imp ? '°F' : '°C';
+  if (kind === 'area') return imp ? 'ft²' : 'm²';
+  if (kind === 'lux') return imp ? 'fc' : 'lux';
+  if (kind === 'kw') return 'kW';
+  if (kind === 'kwh') return 'kWh';
+  if (kind === 'pct') return '%';
+  return '';
+}
+function decimals(kind) {
+  if (kind === 'temp' || kind === 'kw') return 1;
+  if (kind === 'lux') return state.units === 'imperial' ? 1 : 0;
+  return 0;
+}
+function fmt(kind, v) {
+  const x = conv(kind, v);
+  const d = decimals(kind);
+  const n = kind === 'area' || kind === 'kwh' ? Math.round(x).toLocaleString('en-US') : x.toFixed(d);
+  return n + ' ' + unitLabel(kind);
+}
+function fmtAlt(kind, v) {
+  const a = convAlt(kind, v);
+  const saved = state.units;
+  state.units = saved === 'imperial' ? 'metric' : 'imperial';
+  const d = decimals(kind);
+  const n = kind === 'area' ? Math.round(a.v).toLocaleString('en-US') : a.v.toFixed(d);
+  state.units = saved;
+  return n + ' ' + a.label;
+}
+function hasAlt(kind) { return kind === 'temp' || kind === 'area' || kind === 'lux'; }
+
+function clockLabel(m) {
+  const d = Math.floor(m / MIN_PER_DAY);
+  const mm = Math.floor(m - d * MIN_PER_DAY);
+  const date = new Date(BASE_DATE.getTime());
+  date.setDate(date.getDate() + d);
+  let hh = Math.floor(mm / 60);
+  const mi = mm % 60;
+  const ap = hh >= 12 ? 'PM' : 'AM';
+  hh = hh % 12;
+  if (hh === 0) hh = 12;
+  return DAY_NAMES[d] + ' ' + date.getDate() + ' ' + MONTHS[date.getMonth()] + ', ' + hh + ':' + (mi < 10 ? '0' : '') + mi + ' ' + ap;
+}
+function hourLabel(m) {
+  const mm = m % MIN_PER_DAY;
+  let hh = Math.floor(mm / 60);
+  const ap = hh >= 12 ? 'PM' : 'AM';
+  hh = hh % 12;
+  if (hh === 0) hh = 12;
+  return hh + ' ' + ap;
+}
+
+const canvas = $('#view');
+const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, 1, 1, 2500);
+const zoneGroup = new THREE.Group();
+scene.add(zoneGroup);
+scene.add(new THREE.AmbientLight(0xffffff, 0.58));
+const sun = new THREE.DirectionalLight(0xffffff, 0.55);
+sun.position.set(40, 70, 30);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xffffff, 0.22);
+fill.position.set(-30, 20, -40);
+scene.add(fill);
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+const stopColors = STOPS.map(s => new THREE.Color(s[1]));
+const tmpColor = new THREE.Color();
+const selLine = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xffffff }));
+selLine.visible = false;
+scene.add(selLine);
+let grid = null;
+const cam = { theta: 0.85, phi: 1.1, r: 98, tx: 0, ty: 12, tz: 0 };
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function applyCam() {
+  const sp = Math.sin(cam.phi);
+  camera.position.set(
+    cam.tx + cam.r * sp * Math.sin(cam.theta),
+    cam.ty + cam.r * Math.cos(cam.phi),
+    cam.tz + cam.r * sp * Math.cos(cam.theta)
+  );
+  camera.lookAt(cam.tx, cam.ty, cam.tz);
+}
+
+function rampColor(t, out) {
+  t = clamp(t, 0, 1);
+  for (let i = 1; i < STOPS.length; i++) {
+    if (t <= STOPS[i][0]) {
+      const a = STOPS[i - 1][0];
+      const u = (t - a) / (STOPS[i][0] - a);
+      return out.copy(stopColors[i - 1]).lerp(stopColors[i], u);
+    }
+  }
+  return out.copy(stopColors[stopColors.length - 1]);
+}
+
+function makeGrid() {
+  if (grid) {
+    scene.remove(grid);
+    grid.geometry.dispose();
+    grid.material.dispose();
+  }
+  const c = new THREE.Color(cssVar('--line'));
+  const size = layout ? Math.max(180, Math.ceil(Math.max(layout.w, layout.d) * 3 / 10) * 10) : 180;
+  grid = new THREE.GridHelper(size, size / 5, c, c);
+  grid.position.y = -0.1;
+  scene.add(grid);
+}
+
+function applySceneTheme() {
+  const paper = new THREE.Color(cssVar('--paper'));
+  renderer.setClearColor(paper, 1);
+  scene.fog = new THREE.Fog(paper, 150, 360);
+  const ink = new THREE.Color(cssVar('--ink'));
+  selLine.material.color.copy(ink);
+  slabs.forEach(s => s.material.color.set(cssVar('--line')));
+  meshes.forEach(m => m.userData.edges.material.color.copy(ink));
+  makeGrid();
+}
+
+function disposeGroup() {
+  while (zoneGroup.children.length) {
+    const o = zoneGroup.children.pop();
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) o.material.dispose();
+    if (o.userData && o.userData.edges) {
+      o.userData.edges.geometry.dispose();
+      o.userData.edges.material.dispose();
+    }
+  }
+  meshes = [];
+  slabs = [];
+}
+
+function frameCamera() {
+  const h = layout.top;
+  cam.ty = h / 2 - 2;
+  cam.r = Math.max(layout.w, layout.d * 1.2, h * 1.4) * 1.75;
+  if (window.innerWidth < 600) cam.r *= 1.38;
+  if (scene.fog) {
+    scene.fog.near = cam.r * 1.4;
+    scene.fog.far = cam.r * 3.8;
+  }
+}
+
+function mergeGeos(list) {
+  const gs = list.map(g => (g.index ? g.toNonIndexed() : g));
+  let n = 0;
+  gs.forEach(g => { n += g.attributes.position.count; });
+  const pos = new Float32Array(n * 3);
+  const nor = new Float32Array(n * 3);
+  let o = 0;
+  gs.forEach(g => {
+    pos.set(g.attributes.position.array, o);
+    nor.set(g.attributes.normal.array, o);
+    o += g.attributes.position.count * 3;
+    g.dispose();
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  return out;
+}
+
+function zoneLabel(z) {
+  return state.model ? layout.levelNames[z.floor] + ' ' + z.name : z.name;
+}
+
+function levelSlabGeometry(f) {
+  const parts = [];
+  zones.forEach(z => {
+    if (z.floor !== f) return;
+    z.rooms.forEach(r => {
+      try {
+        const shape = new THREE.Shape(r.boundary.map(p => new THREE.Vector2(p[0] - layout.cx, p[1] - layout.cy)));
+        const g = new THREE.ExtrudeGeometry(shape, { depth: 0.3, bevelEnabled: false });
+        g.rotateX(-Math.PI / 2);
+        g.translate(0, layout.elev[f] - 0.2, 0);
+        parts.push(g);
+      } catch (e) {
+        return;
+      }
+    });
+  });
+  return parts.length ? mergeGeos(parts) : null;
+}
+
+function modelZoneGeometry(z) {
+  const parts = [];
+  const depth = Math.max(1.8, layout.h[z.floor] - 0.3);
+  z.rooms.forEach(r => {
+    try {
+      const shape = new THREE.Shape(r.boundary.map(p => new THREE.Vector2(p[0] - layout.cx, p[1] - layout.cy)));
+      r.holes.forEach(h => shape.holes.push(new THREE.Path(h.map(p => new THREE.Vector2(p[0] - layout.cx, p[1] - layout.cy)))));
+      const g = new THREE.ExtrudeGeometry(shape, { depth: depth, bevelEnabled: false });
+      g.rotateX(-Math.PI / 2);
+      g.translate(0, layout.elev[z.floor], 0);
+      parts.push(g);
+    } catch (e) {
+      state.skippedRooms++;
+    }
+  });
+  return parts.length ? mergeGeos(parts) : null;
+}
+
+function buildScene() {
+  disposeGroup();
+  layout = state.model ? layoutFromModel(state.model) : makeLayout(state.seed);
+  state.floor = -1;
+  state.skippedRooms = 0;
+  zones = state.model ? zonesFromModel(state.model, state.seed) : buildZones(state.seed);
+  faults = buildFaults(state.seed, zones.length);
+  cur = new Array(zones.length);
+  ranges = computeRanges();
+  const ink = new THREE.Color(cssVar('--ink'));
+  layout.floors.forEach((n, f) => {
+    const slabMat = new THREE.MeshLambertMaterial({ color: cssVar('--line'), transparent: true, opacity: 0.55 });
+    let slab;
+    const sg = state.model ? levelSlabGeometry(f) : null;
+    if (sg) {
+      slab = new THREE.Mesh(sg, slabMat);
+    } else {
+      slab = new THREE.Mesh(new THREE.BoxGeometry(layout.w + 2, 0.3, layout.d + 2), slabMat);
+      slab.position.y = layout.elev[f] - 0.2;
+    }
+    slab.userData.floor = f;
+    zoneGroup.add(slab);
+    slabs.push(slab);
+  });
+  zones.forEach(z => {
+    let geo;
+    let mesh;
+    const mat = new THREE.MeshLambertMaterial({ color: STOPS[0][1], transparent: true, opacity: 0.94 });
+    if (state.model) {
+      geo = modelZoneGeometry(z) || new THREE.BoxGeometry(1, 1, 1);
+      mesh = new THREE.Mesh(geo, mat);
+    } else {
+      const h = layout.h[z.floor] - 0.3;
+      geo = new THREE.BoxGeometry(z.w, h, z.d);
+      mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(z.cx, layout.elev[z.floor] + h / 2, z.cz);
+    }
+    mesh.userData.zone = z.i;
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geo, 25),
+      new THREE.LineBasicMaterial({ color: ink, transparent: true, opacity: 0.22 })
+    );
+    mesh.add(edges);
+    mesh.userData.edges = edges;
+    zoneGroup.add(mesh);
+    meshes.push(mesh);
+  });
+  state.sel = null;
+  selLine.visible = false;
+  hoverIdx = -1;
+  makeGrid();
+  frameCamera();
+  applyFloorFilter();
+  evaluate();
+}
+
+function evaluate() {
+  for (let i = 0; i < zones.length; i++) cur[i] = sample(zones[i], state.t);
+}
+
+function applyFloorFilter() {
+  const iso = state.floor >= 0;
+  meshes.forEach(m => {
+    const z = zones[m.userData.zone];
+    const on = !iso || z.floor === state.floor;
+    m.material.opacity = on ? 0.94 : 0.07;
+    m.material.depthWrite = on;
+    m.userData.edges.material.opacity = on ? 0.22 : 0.04;
+    m.userData.pickable = on;
+  });
+  slabs.forEach(s => {
+    s.material.opacity = !iso || s.userData.floor === state.floor ? 0.55 : 0.08;
+  });
+  document.querySelectorAll('#floors button').forEach(b => {
+    b.setAttribute('aria-pressed', String(Number(b.dataset.f) === state.floor));
+  });
+  if (state.sel !== null && iso && zones[state.sel].floor !== state.floor) selectZone(null);
+}
+
+function niceCeil(v) {
+  const steps = [1, 1.5, 2, 3, 4, 5, 6, 8, 10];
+  const e = Math.pow(10, Math.floor(Math.log10(v)));
+  const f = v / e;
+  for (const st of steps) if (f <= st + 1e-9) return st * e;
+  return 10 * e;
+}
+
+function computeRanges() {
+  const out = {};
+  ['power', 'hvac'].forEach(id => {
+    const L = LAYERS[id];
+    const vals = [];
+    for (let m = 0; m < TOTAL_MIN; m += 30) {
+      for (let i = 0; i < zones.length; i++) vals.push(L.get(sample(zones[i], m)));
+    }
+    vals.sort((x, y) => x - y);
+    out[id] = niceCeil(Math.max(1, vals[Math.floor(vals.length * 0.99)]));
+  });
+  return out;
+}
+
+function rangeOf(L) {
+  if (L.kind === 'kw' && ranges && ranges[L.id]) return { lo: 0, hi: ranges[L.id] };
+  return { lo: L.lo, hi: L.hi };
+}
+
+function updateColors(dt) {
+  const L = LAYERS[state.layer];
+  const R = rangeOf(L);
+  const k = REDUCE_MOTION ? 1 : Math.min(1, dt * 8);
+  for (let i = 0; i < meshes.length; i++) {
+    const v = L.get(cur[i]);
+    rampColor((v - R.lo) / (R.hi - R.lo), tmpColor);
+    meshes[i].material.color.lerp(tmpColor, k);
+  }
+}
+
+function selectZone(i) {
+  state.sel = i;
+  if (i === null) {
+    selLine.visible = false;
+  } else {
+    const m = meshes[i];
+    selLine.geometry.dispose();
+    selLine.geometry = m.userData.edges.geometry.clone();
+    selLine.position.copy(m.position);
+    selLine.visible = true;
+  }
+  updatePanel();
+}
+
+function pickAt(clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  pointer.x = ((clientX - r.left) / r.width) * 2 - 1;
+  pointer.y = -((clientY - r.top) / r.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const pool = meshes.filter(m => m.userData.pickable !== false);
+  const hit = raycaster.intersectObjects(pool, false)[0];
+  return hit ? hit.object.userData.zone : -1;
+}
+
+function buildingValue(L, m) {
+  let sum = 0;
+  for (let i = 0; i < zones.length; i++) sum += L.get(sample(zones[i], m));
+  return L.agg === 'sum' ? sum : sum / zones.length;
+}
+
+function seriesFor(L) {
+  const out = [];
+  for (let k = 0; k <= 96; k++) {
+    const m = wrap(state.t - (96 - k) * 15);
+    out.push(state.sel === null ? buildingValue(L, m) : L.get(sample(zones[state.sel], m)));
+  }
+  return out;
+}
+
+function drawChart() {
+  const c = $('#chart');
+  const w = c.clientWidth;
+  const h = c.clientHeight;
+  if (!w || !h) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+    c.width = Math.round(w * dpr);
+    c.height = Math.round(h * dpr);
+  }
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const L = LAYERS[state.layer];
+  const data = seriesFor(L);
+  let mn = Math.min.apply(null, data);
+  let mx = Math.max.apply(null, data);
+  if (L.kind === 'temp') { mn -= 0.5; mx += 0.5; } else { mn = 0; mx = mx * 1.1 || 1; }
+  const padL = 6;
+  const padT = 14;
+  const padB = 6;
+  const X = i => padL + (w - padL - 6) * i / (data.length - 1);
+  const Y = v => padT + (h - padT - padB) * (1 - (v - mn) / (mx - mn || 1));
+  ctx.strokeStyle = cssVar('--line');
+  ctx.lineWidth = 1;
+  for (let g = 0; g <= 2; g++) {
+    const y = Math.round(padT + (h - padT - padB) * g / 2) + 0.5;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+  const accent = cssVar('--accent');
+  ctx.beginPath();
+  data.forEach((v, i) => { if (i === 0) ctx.moveTo(X(i), Y(v)); else ctx.lineTo(X(i), Y(v)); });
+  ctx.lineTo(X(data.length - 1), h - padB);
+  ctx.lineTo(X(0), h - padB);
+  ctx.closePath();
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle = accent;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  data.forEach((v, i) => { if (i === 0) ctx.moveTo(X(i), Y(v)); else ctx.lineTo(X(i), Y(v)); });
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  const last = data[data.length - 1];
+  ctx.fillStyle = cssVar('--ink');
+  ctx.beginPath(); ctx.arc(X(data.length - 1), Y(last), 3, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = cssVar('--muted');
+  ctx.font = '11px ' + cssVar('--mono');
+  const kind = L.kind === 'kw' ? 'kw' : L.kind;
+  ctx.textBaseline = 'top';
+  ctx.fillText(fmt(kind, mx), padL + 2, 1);
+}
+
+function statCell(label, value, alt) {
+  return '<div class="stat"><b>' + escapeHtml(value) + '</b>' + (alt ? '<i>' + escapeHtml(alt) + '</i>' : '') + '<span>' + escapeHtml(label) + '</span></div>';
+}
+
+function computeAlerts() {
+  const out = [];
+  for (let i = 0; i < zones.length; i++) {
+    const r = cur[i];
+    if (r.s < 0.15 && r.kwAC > 2) {
+      out.push({ i: i, hot: true, text: 'After-hours cooling', val: r.kwAC, kind: 'kw', score: r.kwAC });
+    } else if (r.f > 0.25 && r.T > 26) {
+      out.push({ i: i, hot: false, text: 'Running warm', val: r.T, kind: 'temp', score: r.T - 20 });
+    }
+  }
+  out.sort((a, b) => b.score - a.score);
+  return out;
+}
+
+function updatePanel() {
+  const L = LAYERS[state.layer];
+  let power = 0, people = 0, cap = 0, tsum = 0;
+  for (let i = 0; i < zones.length; i++) {
+    power += cur[i].kwTotal;
+    people += cur[i].occ;
+    cap += zones[i].cap;
+    tsum += cur[i].T;
+  }
+  const day0 = Math.floor(state.t / MIN_PER_DAY) * MIN_PER_DAY;
+  let kwh = 0;
+  for (let m = day0; m < state.t; m += 15) {
+    let p = 0;
+    for (let i = 0; i < zones.length; i++) p += sample(zones[i], m).kwTotal;
+    kwh += p * 0.25;
+  }
+  const alerts = computeAlerts();
+  const tin = tsum / zones.length;
+  const to = cur[0].to;
+  $('#stats').innerHTML =
+    statCell('Power', fmt('kw', power)) +
+    statCell('Energy today', fmt('kwh', kwh)) +
+    statCell('Indoor average', fmt('temp', tin), hasAlt('temp') ? fmtAlt('temp', tin) : '') +
+    statCell('Outdoor', fmt('temp', to), fmtAlt('temp', to)) +
+    statCell('People in building', String(people), 'of ' + cap) +
+    statCell('Active alerts', String(alerts.length));
+
+  const label = state.sel === null ? 'Whole building' : zoneLabel(zones[state.sel]);
+  $('#chartTitle').textContent = label + ' · ' + L.title + ', last 24 h';
+  drawChart();
+
+  const card = $('#zoneCard');
+  if (state.sel === null) {
+    $('#zoneTitle').textContent = 'Zone';
+    card.innerHTML = '<p class="empty">Tap a zone in the model to see its readings.</p>';
+  } else {
+    const z = zones[state.sel];
+    const r = cur[state.sel];
+    $('#zoneTitle').textContent = state.model ? layout.levelNames[z.floor] + ' · ' + z.name : 'Floor ' + (z.floor + 1) + ' · Zone ' + (z.index + 1);
+    const rows = [
+      ['Floor area', 'area', z.area],
+      ['Power', 'kw', r.kwTotal],
+      ['HVAC', 'kw', r.kwAC],
+      ['Lighting', 'kw', r.kwLight],
+      ['Plug loads', 'kw', r.kwPlug],
+      ['Temperature', 'temp', r.T],
+      ['Humidity', 'pct', r.RH],
+      ['Light level', 'lux', r.lux]
+    ];
+    let html = rows.map(x => '<div class="row"><span>' + escapeHtml(x[0]) + '</span><b>' + escapeHtml(fmt(x[1], x[2])) +
+      (hasAlt(x[1]) ? '<i>' + escapeHtml(fmtAlt(x[1], x[2])) + '</i>' : '') + '</b></div>').join('');
+    html += '<div class="row"><span>People</span><b>' + r.occ + '<i>of ' + z.cap + '</i></b></div>';
+    if (state.model) html += '<div class="row"><span>Rooms</span><b>' + z.nrooms + '</b></div>';
+    if (z.sensor) html += '<div class="row"><span>Sensor ID</span><b>' + escapeHtml(z.sensor) + '</b></div>';
+    card.innerHTML = html;
+  }
+
+  const ul = $('#alerts');
+  const shown = alerts.slice(0, 4);
+  const sig = shown.map(a => a.i + ':' + a.text).join('|');
+  if (ul.dataset.sig !== sig) {
+    ul.dataset.sig = sig;
+    if (!shown.length) {
+      ul.innerHTML = '<li class="empty">No active alerts at this time.</li>';
+    } else {
+      ul.innerHTML = shown.map(a => {
+        const z = zones[a.i];
+        return '<li><button type="button" class="' + (a.hot ? 'hot' : '') + '" data-z="' + escapeAttr(a.i) + '"><span>' +
+          escapeHtml(zoneLabel(z) + ' · ' + a.text) + '</span><small></small></button></li>';
+      }).join('');
+    }
+  }
+  ul.querySelectorAll('button').forEach((b, k) => {
+    const a = shown[k];
+    if (a) b.querySelector('small').textContent = fmt(a.kind, a.val);
+  });
+  $('#clock').textContent = clockLabel(state.t);
+  $('#scrub').value = String(Math.floor(state.t));
+}
+
+function updateLegend() {
+  const L = LAYERS[state.layer];
+  $('#legendTitle').textContent = L.title;
+  const R = rangeOf(L);
+  $('#legendLo').textContent = fmt(L.kind, R.lo);
+  $('#legendHi').textContent = fmt(L.kind, R.hi);
+  $('#legendBar').style.background = 'linear-gradient(to right,' + STOPS.map(s => s[1] + ' ' + Math.round(s[0] * 100) + '%').join(',') + ')';
+}
+
+function renderControls() {
+  $('#layerSeg').innerHTML = Object.keys(LAYERS).map(k =>
+    '<button type="button" data-l="' + escapeAttr(k) + '" title="' + escapeAttr(LAYERS[k].hint) + '" aria-pressed="' + (k === state.layer) + '">' + escapeHtml(LAYERS[k].label) + '</button>'
+  ).join('');
+  $('#speedSeg').innerHTML = SPEEDS.map(s =>
+    '<button type="button" data-s="' + s + '" title="' + (s === 1 ? 'Real time' : s + ' times real time') + '" aria-pressed="' + (s === state.speed) + '">' + s + '×</button>'
+  ).join('');
+  let fl = '';
+  for (let f = layout.floors.length - 1; f >= 0; f--) {
+    fl += '<button type="button" data-f="' + f + '" title="' + escapeAttr(layout.levelNames[f]) + '" aria-pressed="' + (f === state.floor) + '" aria-label="' + escapeAttr(layout.levelNames[f]) + '">' + (f + 1) + '</button>';
+  }
+  fl += '<button type="button" data-f="-1" aria-pressed="' + (state.floor === -1) + '" aria-label="All floors">All</button>';
+  $('#floors').innerHTML = fl;
+  document.querySelectorAll('#unitSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.u === state.units)));
+  $('#playBtn').textContent = state.playing ? 'Pause' : 'Play';
+  $('#playBtn').setAttribute('aria-label', state.playing ? 'Pause' : 'Play');
+  $('#themeBtn').textContent = state.theme === 'light' ? 'Dark' : 'Light';
+  let total = 0;
+  zones.forEach(z => { total += z.area; });
+  $('#brandSub').textContent = layout.sub;
+  $('#simSummary').textContent = layout.name + ': ' + layout.floors.length + (layout.imported ? ' levels, ' : ' floors, ') + zones.length + ' zones, ' +
+    fmt('area', total) + ' (' + fmtAlt('area', total) + '). ' + layout.desc;
+  const ft = f => DAY_NAMES[Math.floor(f.start / MIN_PER_DAY)] + ' ' + hourLabel(f.start) + ' to ' + DAY_NAMES[Math.floor(f.end / MIN_PER_DAY)] + ' ' + hourLabel(f.end);
+  $('#simNote').textContent = 'Planted faults: stuck cooling in ' + zoneLabel(zones[faults[0].zone]) + ' (' + ft(faults[0]) + '), cooling failure in ' +
+    zoneLabel(zones[faults[1].zone]) + ' (' + ft(faults[1]) + '). Seed ' + state.seed + '.';
+  $('#refBtn').disabled = layout.ref;
+  $('#refBtn').textContent = layout.imported ? 'Remove model' : 'Reference office';
+  updateLegend();
+}
+
+function applyTheme(t) {
+  state.theme = t;
+  if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  else document.documentElement.removeAttribute('data-theme');
+  store('theme', t);
+  $('#themeColorMeta').setAttribute('content', cssVar('--paper'));
+  if (zoneGroup) applySceneTheme();
+  $('#themeBtn').textContent = t === 'light' ? 'Dark' : 'Light';
+  drawChart();
+}
+
+function resize() {
+  const stage = $('#stage');
+  const w = stage.clientWidth;
+  const h = stage.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+function frame(now) {
+  const dt = Math.min(0.1, (now - state.lastFrame) / 1000 || 0);
+  state.lastFrame = now;
+  if (state.playing) {
+    state.t += dt * state.speed / 60;
+    if (state.t >= TOTAL_MIN) {
+      state.t -= TOTAL_MIN;
+      toast('Replay looped back to Monday');
+    }
+  }
+  evaluate();
+  updateColors(dt);
+  if (now - state.lastUI > 250) {
+    state.lastUI = now;
+    updatePanel();
+  }
+  applyCam();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+function wireInput() {
+  const pts = new Map();
+  let moved = 0;
+  let downAt = 0;
+  let pinch = 0;
+  canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 1) { moved = 0; downAt = performance.now(); }
+    if (pts.size === 2) {
+      const a = Array.from(pts.values());
+      pinch = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
+    }
+  });
+  canvas.addEventListener('pointermove', e => {
+    const p = pts.get(e.pointerId);
+    if (!p) {
+      if (e.pointerType === 'mouse') {
+        const i = pickAt(e.clientX, e.clientY);
+        const tip = $('#tip');
+        if (i >= 0) {
+          const L = LAYERS[state.layer];
+          const rect = $('#stage').getBoundingClientRect();
+          tip.textContent = zoneLabel(zones[i]) + ' · ' + fmt(L.kind, L.get(cur[i]));
+          tip.style.left = Math.min(rect.width - 140, e.clientX - rect.left + 14) + 'px';
+          tip.style.top = Math.max(4, e.clientY - rect.top - 30) + 'px';
+          tip.hidden = false;
+        } else {
+          tip.hidden = true;
+        }
+      }
+      return;
+    }
+    const dx = e.clientX - p.x;
+    const dy = e.clientY - p.y;
+    p.x = e.clientX;
+    p.y = e.clientY;
+    moved += Math.abs(dx) + Math.abs(dy);
+    if (pts.size === 1) {
+      cam.theta -= dx * 0.006;
+      cam.phi = clamp(cam.phi - dy * 0.006, 0.2, 1.52);
+    } else if (pts.size === 2) {
+      const a = Array.from(pts.values());
+      const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
+      if (pinch > 0 && d > 0) cam.r = clamp(cam.r * pinch / d, 35, 900);
+      pinch = d;
+    }
+  });
+  function end(e) {
+    const had = pts.has(e.pointerId);
+    pts.delete(e.pointerId);
+    if (had && pts.size === 0 && e.type === 'pointerup' && moved < 6 && performance.now() - downAt < 600) {
+      const i = pickAt(e.clientX, e.clientY);
+      selectZone(i >= 0 ? i : null);
+    }
+    if (pts.size < 2) pinch = 0;
+  }
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('pointerleave', () => { $('#tip').hidden = true; });
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    cam.r = clamp(cam.r * Math.exp(e.deltaY * 0.001), 35, 900);
+  }, { passive: false });
+
+  $('#layerSeg').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    state.layer = b.dataset.l;
+    store('layer', state.layer);
+    renderControls();
+    updatePanel();
+  });
+  $('#speedSeg').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    state.speed = parseInt(b.dataset.s, 10);
+    store('speed', state.speed);
+    renderControls();
+  });
+  $('#floors').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    state.floor = parseInt(b.dataset.f, 10);
+    applyFloorFilter();
+  });
+  $('#unitSeg').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    state.units = b.dataset.u;
+    store('units', state.units);
+    renderControls();
+    updatePanel();
+  });
+  $('#themeBtn').addEventListener('click', () => applyTheme(state.theme === 'light' ? 'dark' : 'light'));
+  $('#playBtn').addEventListener('click', () => {
+    state.playing = !state.playing;
+    renderControls();
+  });
+  $('#scrub').addEventListener('input', e => {
+    state.t = parseInt(e.target.value, 10);
+    evaluate();
+    updatePanel();
+  });
+  $('#alerts').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const i = parseInt(b.dataset.z, 10);
+    if (state.floor >= 0 && zones[i].floor !== state.floor) {
+      state.floor = -1;
+      applyFloorFilter();
+    }
+    selectZone(i);
+  });
+  const helpEl = $('#help');
+  const helpBtn = $('#helpBtn');
+  const helpClose = $('#helpClose');
+  function openHelp() {
+    helpEl.hidden = false;
+    document.body.style.overflow = 'hidden';
+    helpEl.querySelector('.help-card').scrollTop = 0;
+    helpClose.focus();
+  }
+  function closeHelp() {
+    helpEl.hidden = true;
+    document.body.style.overflow = '';
+    helpBtn.focus();
+  }
+  helpBtn.addEventListener('click', openHelp);
+  helpClose.addEventListener('click', closeHelp);
+  helpEl.addEventListener('click', e => { if (e.target === helpEl) closeHelp(); });
+  document.addEventListener('keydown', e => {
+    if (helpEl.hidden) return;
+    if (e.key === 'Escape') closeHelp();
+    if (e.key === 'Tab') { e.preventDefault(); helpClose.focus(); }
+  });
+  function swapBuilding(seed) {
+    state.seed = seed;
+    store('seed', state.seed);
+    buildScene();
+    renderControls();
+    updatePanel();
+    toast(layout.name + ': ' + layout.floors.length + (layout.imported ? ' levels, ' : ' floors, ') + zones.length + ' zones');
+  }
+  function clearModel() {
+    state.model = null;
+    store('model', '');
+  }
+  $('#reseed').addEventListener('click', async () => {
+    const msg = state.model
+      ? 'Replace the loaded Revit model with a new simulated building?'
+      : 'Generate a new simulated building? Floors, zones, footprint, schedule and climate all change.';
+    const ok = await confirmDialog(msg, 'Generate');
+    if (!ok) return;
+    let seed = Math.floor(Math.random() * 900000000) + 100000;
+    if (seed === DEFAULT_SEED) seed++;
+    clearModel();
+    swapBuilding(seed);
+  });
+  $('#refBtn').addEventListener('click', () => {
+    if (layout.ref) return;
+    clearModel();
+    swapBuilding(DEFAULT_SEED);
+  });
+  function acceptModel(text, fileName) {
+    let obj;
+    try {
+      obj = JSON.parse(text);
+    } catch (e) {
+      toast('That file is not valid JSON.');
+      return false;
+    }
+    const err = checkModel(obj);
+    if (err) {
+      toast(err);
+      return false;
+    }
+    state.model = normalizeModel(obj);
+    if (text.length < STORE_MODEL_CHARS) store('model', JSON.stringify(state.model));
+    else store('model', '');
+    buildScene();
+    renderControls();
+    updatePanel();
+    const skipped = state.skippedRooms ? ' (' + state.skippedRooms + ' room outlines could not be drawn)' : '';
+    toast('Loaded ' + state.model.project + ': ' + layout.floors.length + ' levels, ' + zones.length + ' zones' + skipped);
+    return true;
+  }
+  function readModelFile(file) {
+    if (!file) return;
+    if (file.size > MAX_MODEL_BYTES) {
+      toast('That file is over 25 MB, which is too large for a model export.');
+      return;
+    }
+    const fr = new FileReader();
+    fr.onerror = () => toast('The file could not be read.');
+    fr.onload = () => acceptModel(String(fr.result), file.name);
+    fr.readAsText(file);
+  }
+  $('#loadModel').addEventListener('click', () => $('#modelFile').click());
+  $('#modelFile').addEventListener('change', e => {
+    readModelFile(e.target.files && e.target.files[0]);
+    e.target.value = '';
+  });
+  const stageEl = $('#stage');
+  ['dragenter', 'dragover'].forEach(ev => stageEl.addEventListener(ev, e => {
+    e.preventDefault();
+    stageEl.classList.add('drop');
+  }));
+  ['dragleave', 'drop'].forEach(ev => stageEl.addEventListener(ev, e => {
+    e.preventDefault();
+    stageEl.classList.remove('drop');
+  }));
+  stageEl.addEventListener('drop', e => {
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    readModelFile(f);
+  });
+  window.addEventListener('resize', resize);
+  if (window.ResizeObserver) new ResizeObserver(resize).observe($('#stage'));
+}
+
+function init() {
+  state.seed = parseInt(load('seed', DEFAULT_SEED), 10) || DEFAULT_SEED;
+  state.units = load('units', 'imperial') === 'metric' ? 'metric' : 'imperial';
+  const savedLayer = load('layer', 'power');
+  state.layer = LAYERS[savedLayer] ? savedLayer : 'power';
+  const sp = parseInt(load('speed', 600), 10);
+  state.speed = SPEEDS.indexOf(sp) >= 0 ? sp : 600;
+  $('#footVersion').innerHTML = `${escapeHtml(TOOL_NAME)} · v${APP_VERSION} · <a href="https://axisbim.io" target="_blank" rel="noopener">Joe.K · axisbim.io</a>`;
+  const savedModel = load('model', '');
+  if (savedModel) {
+    try {
+      const o = JSON.parse(savedModel);
+      if (!checkModel(o)) state.model = normalizeModel(o);
+    } catch (e) {
+      state.model = null;
+    }
+  }
+  applyTheme(load('theme', 'dark') === 'light' ? 'light' : 'dark');
+  buildScene();
+  renderControls();
+  wireInput();
+  resize();
+  applyCam();
+  updatePanel();
+  requestAnimationFrame(frame);
+}
+
+init();
+</script>
+</body>
+</html>
