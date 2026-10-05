@@ -147,6 +147,7 @@ a{color:var(--accent)}
 .alerts button.hot{border-left-color:var(--hot)}
 .alerts small{font-family:var(--mono);font-size:12px;color:var(--muted)}
 .note{margin:0 0 10px;color:var(--muted);font-size:13px}
+#layerSeg button{padding:6px 8px}
 .btnrow{display:flex;gap:8px;flex-wrap:wrap}
 .floors{max-height:calc(100% - 24px);overflow-y:auto}
 .stage.drop::after{content:'Drop the model file to load it';position:absolute;inset:8px;border:2px dashed var(--accent);display:flex;align-items:center;justify-content:center;background:var(--scrim);color:var(--ink);font-size:16px;pointer-events:none}
@@ -302,6 +303,8 @@ button:disabled:hover{border-color:var(--line)}
       <dd>Everything a zone draws: HVAC, lighting and plug loads added together.</dd>
       <dt>HVAC</dt>
       <dd>Heating, cooling and ventilation only. In this model it is the biggest and most variable part.</dd>
+      <dt>Density</dt>
+      <dd>Power per unit of floor area, in W/ft² or W/m². Use it when zones differ a lot in size: a big lobby always draws more kW than a closet, but density shows which one is working harder for its size. The building figure is area-weighted.</dd>
       <dt>Temp</dt>
       <dd>Indoor air temperature in the zone.</dd>
       <dt>People</dt>
@@ -357,7 +360,7 @@ button:disabled:hover{border-color:var(--line)}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 const TOOL_NAME = 'STRATA';
 
 const MIN_PER_DAY = 1440;
@@ -392,6 +395,7 @@ const LAYERS = {
   power: { label: 'Power', title: 'Power', get: r => r.kwTotal, lo: 0, hi: 18, kind: 'kw', agg: 'sum', hint: 'HVAC, lighting and plug loads combined' },
   hvac: { label: 'HVAC', title: 'HVAC power', get: r => r.kwAC, lo: 0, hi: 12, kind: 'kw', agg: 'sum', hint: 'Heating, cooling and ventilation only' },
   temp: { label: 'Temp', title: 'Indoor temperature', get: r => r.T, lo: 20, hi: 28, kind: 'temp', agg: 'mean', hint: 'Indoor air temperature' },
+  dens: { label: 'Density', title: 'Power density', get: r => r.wm2, lo: 0, hi: 60, kind: 'wm2', agg: 'area', hint: 'Power per unit of floor area, so big and small zones compare fairly' },
   occ: { label: 'People', title: 'Occupancy', get: r => r.f * 100, lo: 0, hi: 100, kind: 'pct', agg: 'mean', hint: 'Estimated occupants as a share of capacity' }
 };
 
@@ -797,6 +801,7 @@ function sample(z, m) {
     kwPlug: kwPlug,
     kwAC: kwAC,
     kwTotal: kwLight + kwPlug + kwAC,
+    wm2: (kwLight + kwPlug + kwAC) * 1000 / z.area,
     T: T,
     RH: RH,
     lux: lux
@@ -808,6 +813,7 @@ function conv(kind, v) {
     if (kind === 'temp') return v * 9 / 5 + 32;
     if (kind === 'area') return v * SQM_TO_SQFT;
     if (kind === 'lux') return v / SQM_TO_SQFT;
+    if (kind === 'wm2') return v / SQM_TO_SQFT;
   }
   return v;
 }
@@ -824,13 +830,14 @@ function unitLabel(kind) {
   if (kind === 'temp') return imp ? '°F' : '°C';
   if (kind === 'area') return imp ? 'ft²' : 'm²';
   if (kind === 'lux') return imp ? 'fc' : 'lux';
+  if (kind === 'wm2') return imp ? 'W/ft²' : 'W/m²';
   if (kind === 'kw') return 'kW';
   if (kind === 'kwh') return 'kWh';
   if (kind === 'pct') return '%';
   return '';
 }
 function decimals(kind) {
-  if (kind === 'temp' || kind === 'kw') return 1;
+  if (kind === 'temp' || kind === 'kw' || kind === 'wm2') return 1;
   if (kind === 'lux') return state.units === 'imperial' ? 1 : 0;
   return 0;
 }
@@ -849,7 +856,7 @@ function fmtAlt(kind, v) {
   state.units = saved;
   return n + ' ' + a.label;
 }
-function hasAlt(kind) { return kind === 'temp' || kind === 'area' || kind === 'lux'; }
+function hasAlt(kind) { return kind === 'temp' || kind === 'area' || kind === 'lux' || kind === 'wm2'; }
 
 function clockLabel(m) {
   const d = Math.floor(m / MIN_PER_DAY);
@@ -1120,7 +1127,7 @@ function niceCeil(v) {
 
 function computeRanges() {
   const out = {};
-  ['power', 'hvac'].forEach(id => {
+  ['power', 'hvac', 'dens'].forEach(id => {
     const L = LAYERS[id];
     const vals = [];
     for (let m = 0; m < TOTAL_MIN; m += 30) {
@@ -1133,7 +1140,7 @@ function computeRanges() {
 }
 
 function rangeOf(L) {
-  if (L.kind === 'kw' && ranges && ranges[L.id]) return { lo: 0, hi: ranges[L.id] };
+  if (ranges && ranges[L.id]) return { lo: 0, hi: ranges[L.id] };
   return { lo: L.lo, hi: L.hi };
 }
 
@@ -1174,8 +1181,19 @@ function pickAt(clientX, clientY) {
 
 function buildingValue(L, m) {
   let sum = 0;
-  for (let i = 0; i < zones.length; i++) sum += L.get(sample(zones[i], m));
-  return L.agg === 'sum' ? sum : sum / zones.length;
+  let area = 0;
+  for (let i = 0; i < zones.length; i++) {
+    const v = L.get(sample(zones[i], m));
+    if (L.agg === 'area') {
+      sum += v * zones[i].area;
+      area += zones[i].area;
+    } else {
+      sum += v;
+    }
+  }
+  if (L.agg === 'sum') return sum;
+  if (L.agg === 'area') return sum / area;
+  return sum / zones.length;
 }
 
 function seriesFor(L) {
@@ -1301,6 +1319,7 @@ function updatePanel() {
     const rows = [
       ['Floor area', 'area', z.area],
       ['Power', 'kw', r.kwTotal],
+      ['Power density', 'wm2', r.wm2],
       ['HVAC', 'kw', r.kwAC],
       ['Lighting', 'kw', r.kwLight],
       ['Plug loads', 'kw', r.kwPlug],

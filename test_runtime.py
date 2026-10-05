@@ -55,7 +55,7 @@ async def main():
         check("33 zone meshes", n == 33, n)
         floors = await page.evaluate("new Set(zones.map(z => z.floor)).size")
         check("7 floors", floors == 7, floors)
-        check("footer shows version", "v1.2.0" in await page.inner_text("#footVersion"))
+        check("footer shows version", "v1.2.1" in await page.inner_text("#footVersion"))
         gl = await page.evaluate("!!renderer.getContext()")
         check("WebGL context created", gl)
         await page.wait_for_timeout(600)
@@ -120,6 +120,42 @@ async def main():
         check("chart title names selected zone and layer", "Indoor temperature" in ct, ct)
         stored = await page.evaluate("localStorage.getItem('strata.units')")
         check("units persisted", stored == "imperial", stored)
+
+        print("\n== Density layer ==")
+        await page.evaluate("state.playing = false; state.t = 14*60; evaluate(); updatePanel();")
+        await page.click("#layerSeg button[data-l=dens]")
+        await page.wait_for_timeout(300)
+        d = await page.evaluate("""() => {
+            const z = zones[5], r = sample(z, state.t);
+            let kw = 0, area = 0;
+            zones.forEach(q => { kw += sample(q, state.t).kwTotal; area += q.area; });
+            return { direct: r.wm2, viaKw: r.kwTotal * 1000 / z.area, bldg: buildingValue(LAYERS.dens, state.t), bldgExpected: kw * 1000 / area, hi: rangeOf(LAYERS.dens).hi };
+        }""")
+        check("zone density equals kW per area", abs(d["direct"] - d["viaKw"]) < 1e-9, d)
+        check("building density is the area-weighted total", abs(d["bldg"] - d["bldgExpected"]) < 1e-6, d)
+        check("density colour range is a sensible W/m2 figure", 5 < d["hi"] < 200, d)
+        lo = await page.inner_text("#legendHi")
+        check("legend in W/ft2 when imperial", "W/ft²" in lo, lo)
+        await page.click("#unitSeg button[data-u=metric]")
+        await page.wait_for_timeout(250)
+        lo = await page.inner_text("#legendHi")
+        check("legend in W/m2 when metric", "W/m²" in lo, lo)
+        await page.click("#unitSeg button[data-u=imperial]")
+        ct = await page.inner_text("#chartTitle")
+        check("chart title names the layer", "Power density" in ct, ct)
+        xy = await zone_xy(page, 12)
+        await page.mouse.click(xy["x"], xy["y"])
+        await page.wait_for_timeout(400)
+        card = await page.inner_text("#zoneCard")
+        check("zone card shows density in both units", "Power density" in card and "W/ft²" in card and "W/m²" in card, card)
+        spread = await page.evaluate("""() => {
+            const R = rangeOf(LAYERS.dens); let over = 0, n = 0;
+            for (let m = 0; m < TOTAL_MIN; m += 30) for (const z of zones) { n++; if (sample(z, m).wm2 > R.hi) over++; }
+            return 100 * over / n;
+        }""")
+        check("under 3 percent of density samples exceed the colour range", spread < 3, spread)
+        await page.click("#layerSeg button[data-l=power]")
+        await page.evaluate("selectZone(null)")
 
         print("\n== Floor isolation ==")
         await page.click("#floors button[data-f='2']")

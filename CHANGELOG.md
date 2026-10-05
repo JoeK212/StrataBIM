@@ -1,3 +1,7 @@
+v1.2.1 - 2026-10-05 - Add Density layer: power per unit of floor area, so large and small zones compare fairly
+
+Raw kW colours the biggest rooms hottest regardless of how hard they work, which made imported Revit models with very different room sizes hard to read. Density divides each zone's power by its area (W/m² or W/ft² to match the unit toggle), has its own colour range sized to the building's week, shows beside the other readings in the zone card, and plots an area-weighted building figure in the trend chart. Power stays as it was.
+
 v1.2.0 - 2026-10-05 - Load a Revit model: Dynamo Room exporter plus an in-browser importer that extrudes your rooms into coloured zones
 
 tools/revit_export_rooms.py runs in a Dynamo CPython3 Python Script node (Revit Architecture has Rooms, not MEP Spaces). It reads every placed, enclosed Room, converts feet to metres, tessellates curved walls, keeps holes such as shafts, groups rooms into zones by an optional STRATA_Zone text parameter, then Department, then one zone per Room, and carries an optional STRATA_Sensor ID. It opens no transaction and changes nothing in the model. The output is a small strata-model-1 JSON file.

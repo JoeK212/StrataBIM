@@ -137,7 +137,7 @@ check('help describes planted faults and points to the Simulation note instead o
   /Two faults are planted/.test(html) && /Simulation note at the bottom of the panel/.test(html) && !/Wednesday evening/.test(html));
 check('help speed descriptions match SPEEDS', /const SPEEDS = \[1, 60, 600, 3600\]/.test(script) && /60× is one simulated minute per second, 600× is ten minutes per second, 3600× is one hour per second/.test(html));
 check('help card scrolls inside the viewport', /\.help-card\{[^}]*max-height:calc\(100dvh - 32px\);overflow-y:auto/.test(html));
-check('every layer has a hover hint', (script.match(/hint: '/g) || []).length === 4);
+check('every layer has a hover hint', (script.match(/hint: '/g) || []).length === 5);
 
 sectionHeader('v1.1.0 New simulated building changes the building');
 check('reference layout is seven floors and 33 zones (CU-BEMS count)',
@@ -182,6 +182,14 @@ check('Y-up conversion: shape rotated about X by -90 degrees so Revit north maps
 check('Remove model and Load buttons exist, file input is hidden', /id="loadModel"/.test(html) && /id="modelFile" accept="\.json,application\/json" hidden/.test(html));
 check('help explains the Revit export steps and file name', /tools\/revit_export_rooms\.py/.test(html) && /CPython3/.test(html) && /Remove model returns to the reference office/.test(html));
 check('sample model present and uses the schema', fs.existsSync(path.join(dir, 'data', 'sample_model.json')) && JSON.parse(read('data/sample_model.json')).schema === 'strata-model-1');
+
+sectionHeader('v1.2.1 density layer');
+check('density layer defined with unit-aware kind', /dens: \{ label: 'Density'/.test(script) && /kind: 'wm2'/.test(script));
+check('sample() returns wm2 = kW * 1000 / zone area', /wm2: \(kwLight \+ kwPlug \+ kwAC\) \* 1000 \/ z\.area/.test(script));
+check('W/ft2 and W/m2 conversion matches the area conversion', /kind === 'wm2'\) return v \/ SQM_TO_SQFT/.test(script) && /'W\/ft²' : 'W\/m²'/.test(script));
+check('building density is area-weighted, not a plain mean', /L\.agg === 'area'/.test(script) && /sum \+= v \* zones\[i\]\.area/.test(script));
+check('density colour range computed per building', /\['power', 'hvac', 'dens'\]\.forEach/.test(script));
+check('help explains Density', /<dt>Density<\/dt>/.test(html) && /area-weighted/.test(html));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
