@@ -55,7 +55,7 @@ async def main():
         check("33 zone meshes", n == 33, n)
         floors = await page.evaluate("new Set(zones.map(z => z.floor)).size")
         check("7 floors", floors == 7, floors)
-        check("footer shows version", "v1.3.1" in await page.inner_text("#footVersion"))
+        check("footer shows version", "v1.4.0" in await page.inner_text("#footVersion"))
         gl = await page.evaluate("!!renderer.getContext()")
         check("WebGL context created", gl)
         await page.wait_for_timeout(600)

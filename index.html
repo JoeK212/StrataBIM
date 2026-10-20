@@ -105,6 +105,10 @@ a{color:var(--accent)}
 .legend .lt{font-size:12px;color:var(--muted);margin-bottom:4px}
 .legend .bar{height:8px;border:1px solid var(--line)}
 .legend .lv{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;margin-top:3px}
+.legend .qa{font-size:12px;color:var(--muted);margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.legend .qa span{white-space:nowrap}
+.legend .qa i{display:inline-block;width:18px;height:10px;border:1px solid var(--ink)}
+.legend .qa i.d{border-style:dashed;opacity:0.6}
 .tip{
   position:absolute;pointer-events:none;
   background:var(--card);border:1px solid var(--accent);
@@ -224,6 +228,7 @@ button:disabled:hover{border-color:var(--line)}
         <div class="lt" id="legendTitle"></div>
         <div class="bar" id="legendBar"></div>
         <div class="lv"><span id="legendLo"></span><span id="legendHi"></span></div>
+        <div class="qa" id="legendQa" hidden></div>
       </div>
       <div class="tip" id="tip" hidden></div>
     </section>
@@ -265,6 +270,14 @@ button:disabled:hover{border-color:var(--line)}
           <button type="button" data-src="sim" aria-pressed="true">Simulated</button>
         </div>
         <p class="note" id="srcNote"></p>
+        <div id="qaWrap" hidden>
+          <h2 class="h" style="margin-top:16px">Estimated values</h2>
+          <div class="seg" id="qaSeg" role="group" aria-label="Mark estimated values">
+            <button type="button" data-qa="on" aria-pressed="true">Marked</button>
+            <button type="button" data-qa="off" aria-pressed="false">Unmarked</button>
+          </div>
+          <p class="note">Marked draws estimated zones faded with dashed edges, and estimated stretches of the trend chart dashed.</p>
+        </div>
         <h2 class="h" style="margin-top:16px">Building</h2>
         <p class="note" id="simSummary"></p>
         <p class="note" id="simNote"></p>
@@ -353,6 +366,8 @@ button:disabled:hover{border-color:var(--line)}
       <dd>One week of measured data from an office building at Chulalongkorn University in Bangkok (Scientific Data, 2020): 33 zones on 7 floors, every 10 minutes, with HVAC, lighting and plug power plus temperature, humidity and light level. It is played back Monday to Sunday.</dd>
       <dt>New York weather</dt>
       <dd>The outdoor temperature comes from hourly Open-Meteo records for Central Park, New York. The building was measured in Bangkok, so the weather is shown for context and does not explain its loads.</dd>
+      <dt>Marking estimates</dt>
+      <dd>In the CU-BEMS replay, a zone whose value for the chosen layer is estimated is drawn faded with dashed edges, and estimated stretches of the trend chart are dashed. The legend counts how many zones are estimated at the current time. Power and Density mark zones missing a meter, HVAC marks zones with no HVAC meter, and Temp marks estimated temperatures. People is inferred everywhere, so it is not marked zone by zone and the legend says so. Marked and Unmarked in the Data source section turn this on or off.</dd>
       <dt>Estimates</dt>
       <dd>The raw data has gaps, and none are shown as real readings. Temperature and humidity sensors sit on a flat, repeated value until about Wednesday 3 PM, and any run of 6 hours or more of an identical reading is treated as a stuck sensor and ignored. Floor 1 and one zone on each other floor have no temperature sensor, and 9 zones lack an HVAC, lighting or plug meter. Missing temperature and humidity are filled from the same floor, then the whole building, and when no zone is reporting, from the building's occupied and empty readings. In this office the occupied readings are cooler, so an empty zone, such as floor 1 on a Monday morning, is estimated warmer than a busy one. An unmetered load reads 0 and is labelled not metered. The zone card marks every estimated value, and the Building section lists what is estimated. Estimated temperatures never raise Running warm.</dd>
       <dt>Simulated</dt>
@@ -376,7 +391,7 @@ button:disabled:hover{border-color:var(--line)}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '1.3.1';
+const APP_VERSION = '1.4.0';
 const TOOL_NAME = 'STRATA';
 
 const MIN_PER_DAY = 1440;
@@ -418,11 +433,11 @@ const STOPS = [[0, '#1D2550'], [0.4, '#6A4CF0'], [0.75, '#E85FA0'], [1, '#FFC857
 const REDUCE_MOTION = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const LAYERS = {
-  power: { label: 'Power', title: 'Power', get: r => r.kwTotal, lo: 0, hi: 18, kind: 'kw', agg: 'sum', hint: 'HVAC, lighting and plug loads combined' },
-  hvac: { label: 'HVAC', title: 'HVAC power', get: r => r.kwAC, lo: 0, hi: 12, kind: 'kw', agg: 'sum', hint: 'Heating, cooling and ventilation only' },
-  temp: { label: 'Temp', title: 'Indoor temperature', get: r => r.T, lo: 20, hi: 28, kind: 'temp', agg: 'mean', hint: 'Indoor air temperature' },
-  dens: { label: 'Density', title: 'Power density', get: r => r.wm2, lo: 0, hi: 60, kind: 'wm2', agg: 'area', hint: 'Power per unit of floor area, so big and small zones compare fairly' },
-  occ: { label: 'People', title: 'Occupancy', get: r => r.f * 100, lo: 0, hi: 100, kind: 'pct', agg: 'mean', hint: 'Estimated occupants as a share of capacity' }
+  power: { label: 'Power', title: 'Power', get: r => r.kwTotal, lo: 0, hi: 18, kind: 'kw', agg: 'sum', hint: 'HVAC, lighting and plug loads combined', est: r => !!r.estLoad },
+  hvac: { label: 'HVAC', title: 'HVAC power', get: r => r.kwAC, lo: 0, hi: 12, kind: 'kw', agg: 'sum', hint: 'Heating, cooling and ventilation only', est: r => !!r.estAC },
+  temp: { label: 'Temp', title: 'Indoor temperature', get: r => r.T, lo: 20, hi: 28, kind: 'temp', agg: 'mean', hint: 'Indoor air temperature', est: r => !!r.estT },
+  dens: { label: 'Density', title: 'Power density', get: r => r.wm2, lo: 0, hi: 60, kind: 'wm2', agg: 'area', hint: 'Power per unit of floor area, so big and small zones compare fairly', est: r => !!r.estLoad },
+  occ: { label: 'People', title: 'Occupancy', get: r => r.f * 100, lo: 0, hi: 100, kind: 'pct', agg: 'mean', hint: 'Estimated occupants as a share of capacity', est: r => false, inferred: true }
 };
 
 Object.keys(LAYERS).forEach(k => { LAYERS[k].id = k; });
@@ -434,6 +449,7 @@ const state = {
   seed: DEFAULT_SEED,
   layer: 'power',
   units: 'imperial',
+  mark: true,
   theme: 'dark',
   floor: -1,
   sel: null,
@@ -1068,6 +1084,8 @@ function dataSample(z, m) {
     T: T,
     RH: cond ? L(S.RH) : toRH,
     lux: Math.round(L(S.lux) * (cond ? 1 : 0.5)),
+    estLoad: cond && (!S.has.ac || !S.has.light || !S.has.plug),
+    estAC: cond && !S.has.ac,
     estT: cond && S.tEst[near] === 1,
     estRH: cond && S.rEst[near] === 1,
     estLux: cond && S.lEst[near] === 1
@@ -1390,6 +1408,14 @@ function buildScene() {
     );
     mesh.add(edges);
     mesh.userData.edges = edges;
+    const dash = new THREE.LineSegments(
+      edges.geometry,
+      new THREE.LineDashedMaterial({ color: ink, transparent: true, opacity: 0.95, dashSize: 0.6, gapSize: 0.4 })
+    );
+    dash.computeLineDistances();
+    dash.visible = false;
+    mesh.add(dash);
+    mesh.userData.dash = dash;
     zoneGroup.add(mesh);
     meshes.push(mesh);
   });
@@ -1453,14 +1479,43 @@ function rangeOf(L) {
   return { lo: L.lo, hi: L.hi };
 }
 
+function markOn() { return state.mark && dataMode(); }
+
+function estSeriesFor(L) {
+  const out = [];
+  const on = markOn() && !!L.est;
+  for (let k = 0; k <= 96; k++) {
+    if (!on) { out.push(false); continue; }
+    const m = wrap(state.t - (96 - k) * 15);
+    if (state.sel === null) {
+      let n = 0;
+      for (let i = 0; i < zones.length; i++) if (L.est(sample(zones[i], m))) n++;
+      out.push(n * 2 >= zones.length);
+    } else {
+      out.push(L.est(sample(zones[state.sel], m)));
+    }
+  }
+  return out;
+}
+
 function updateColors(dt) {
   const L = LAYERS[state.layer];
   const R = rangeOf(L);
   const k = REDUCE_MOTION ? 1 : Math.min(1, dt * 8);
+  const mark = markOn();
   for (let i = 0; i < meshes.length; i++) {
     const v = L.get(cur[i]);
     rampColor((v - R.lo) / (R.hi - R.lo), tmpColor);
     meshes[i].material.color.lerp(tmpColor, k);
+    const mu = meshes[i].userData;
+    const est = mark && !!L.est && L.est(cur[i]) && mu.pickable !== false;
+    if (mu.pickable !== false) {
+      const target = est ? 0.5 : 0.94;
+      const op = meshes[i].material.opacity;
+      meshes[i].material.opacity = op + (target - op) * k;
+    }
+    if (mu.dash) mu.dash.visible = est;
+    if (mu.edges) mu.edges.visible = !est;
   }
 }
 
@@ -1529,6 +1584,7 @@ function drawChart() {
   ctx.clearRect(0, 0, w, h);
   const L = LAYERS[state.layer];
   const data = seriesFor(L);
+  const estS = estSeriesFor(L);
   let mn = Math.min.apply(null, data);
   let mx = Math.max.apply(null, data);
   if (L.kind === 'temp') { mn -= 0.5; mx += 0.5; } else { mn = 0; mx = mx * 1.1 || 1; }
@@ -1553,11 +1609,16 @@ function drawChart() {
   ctx.fillStyle = accent;
   ctx.fill();
   ctx.globalAlpha = 1;
-  ctx.beginPath();
-  data.forEach((v, i) => { if (i === 0) ctx.moveTo(X(i), Y(v)); else ctx.lineTo(X(i), Y(v)); });
   ctx.strokeStyle = accent;
   ctx.lineWidth = 2;
-  ctx.stroke();
+  for (let i = 1; i < data.length; i++) {
+    ctx.setLineDash(estS[i] ? [4, 3] : []);
+    ctx.beginPath();
+    ctx.moveTo(X(i - 1), Y(data[i - 1]));
+    ctx.lineTo(X(i), Y(data[i]));
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
   const last = data[data.length - 1];
   ctx.fillStyle = cssVar('--ink');
   ctx.beginPath(); ctx.arc(X(data.length - 1), Y(last), 3, 0, Math.PI * 2); ctx.fill();
@@ -1566,6 +1627,11 @@ function drawChart() {
   const kind = L.kind === 'kw' ? 'kw' : L.kind;
   ctx.textBaseline = 'top';
   ctx.fillText(fmt(kind, mx), padL + 2, 1);
+  if (estS.some(Boolean)) {
+    ctx.textAlign = 'right';
+    ctx.fillText('dashed = estimated', w - 8, 1);
+    ctx.textAlign = 'left';
+  }
 }
 
 function statCell(label, value, alt) {
@@ -1587,6 +1653,7 @@ function computeAlerts() {
 }
 
 function updatePanel() {
+  updateQa();
   const L = LAYERS[state.layer];
   let power = 0, people = 0, cap = 0, tsum = 0;
   for (let i = 0; i < zones.length; i++) {
@@ -1679,6 +1746,27 @@ function updateLegend() {
   $('#legendLo').textContent = fmt(L.kind, R.lo);
   $('#legendHi').textContent = fmt(L.kind, R.hi);
   $('#legendBar').style.background = 'linear-gradient(to right,' + STOPS.map(s => s[1] + ' ' + Math.round(s[0] * 100) + '%').join(',') + ')';
+  updateQa();
+}
+
+function updateQa() {
+  const el = $('#legendQa');
+  const L = LAYERS[state.layer];
+  let html = '';
+  if (dataMode()) {
+    if (L.inferred) {
+      html = 'All values are inferred from lighting and plug load';
+    } else if (state.mark && L.est) {
+      let n = 0;
+      for (let i = 0; i < zones.length; i++) if (cur[i] && L.est(cur[i])) n++;
+      html = '<span><i></i>Measured</span><span><i class="d"></i>Estimated</span><span>' + n + ' of ' + zones.length + ' zones estimated now</span>';
+    }
+  }
+  if (el.dataset.h !== html) {
+    el.dataset.h = html;
+    el.innerHTML = html;
+  }
+  el.hidden = !html;
 }
 
 function renderControls() {
@@ -1731,6 +1819,8 @@ function renderControls() {
   $('#srcNote').textContent = DATA.status === 'ready'
     ? (dmode ? 'Replaying one week of measured data from the CU-BEMS office in Bangkok (' + P0().zs.length + ' zones, every 10 minutes) with New York weather outdoors.' : 'Simulated readings from an office schedule. Switch to CU-BEMS replay to see measured data.')
     : (DATA.status === 'loading' ? 'Loading the CU-BEMS data files…' : DATA.note || 'Simulated readings.');
+  $('#qaWrap').hidden = !dmode;
+  document.querySelectorAll('#qaSeg button').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.qa === 'on') === state.mark)));
   $('#refBtn').disabled = layout.ref;
   $('#refBtn').textContent = layout.imported ? 'Remove model' : 'Reference office';
   updateLegend();
@@ -1925,6 +2015,14 @@ function wireInput() {
     updatePanel();
     toast(src === 'data' ? 'Replaying CU-BEMS measurements' : 'Showing the simulated feed');
   }
+  $('#qaSeg').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    state.mark = b.dataset.qa === 'on';
+    store('mark', state.mark ? 'on' : 'off');
+    renderControls();
+    drawChart();
+  });
   $('#srcSeg').addEventListener('click', e => {
     const b = e.target.closest('button');
     if (!b || b.disabled) return;
@@ -2028,6 +2126,7 @@ function init() {
   state.speed = SPEEDS.indexOf(sp) >= 0 ? sp : 600;
   $('#footVersion').innerHTML = `${escapeHtml(TOOL_NAME)} · v${APP_VERSION} · <a href="https://axisbim.io" target="_blank" rel="noopener">Joe.K · axisbim.io</a>`;
   state.wantData = load('source', 'data') !== 'sim';
+  state.mark = load('mark', 'on') !== 'off';
   const savedModel = load('model', '');
   if (savedModel) {
     try {

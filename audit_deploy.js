@@ -243,5 +243,15 @@ check('Help no longer says the numbers are generated', !/numbers are generated f
 check('Help Temp layer explains estimated temperature', /Temp<\/dt>\s*<dd>[^<]*estimated for every zone before about Wednesday 3 PM/.test(html));
 check('Help Estimates explains masking, fill order and occupancy effect', /6 hours or more of an identical reading/.test(html) && /from the same floor, then the whole building/.test(html) && /empty zone[^.]*estimated warmer/.test(html) && /labelled not metered/.test(html));
 
+sectionHeader('v1.4.0 Data-quality overlay');
+check('each layer declares which zones are estimated', /est: r => !!r\.estLoad/.test(script) && /est: r => !!r\.estAC/.test(script) && /est: r => !!r\.estT/.test(script) && /inferred: true/.test(script));
+check('data samples flag unmetered loads and no-HVAC-meter zones', /estLoad: cond && \(!S\.has\.ac \|\| !S\.has\.light \|\| !S\.has\.plug\)/.test(script) && /estAC: cond && !S\.has\.ac/.test(script));
+check('estimated zones are faded with dashed edges', /LineDashedMaterial/.test(script) && /mu\.dash\.visible = est/.test(script) && /est \? 0\.5 : 0\.94/.test(script));
+check('overlay only applies in replay mode (markOn)', /function markOn\(\) \{ return state\.mark && dataMode\(\); \}/.test(script));
+check('trend chart dashes estimated stretches', /function estSeriesFor\(L\)/.test(script) && /setLineDash\(estS\[i\] \? \[4, 3\] : \[\]\)/.test(script) && /dashed = estimated/.test(script));
+check('legend key counts estimated zones and says People is inferred', /id="legendQa"/.test(html) && /zones estimated now/.test(script) && /All values are inferred from lighting and plug load/.test(script));
+check('Marked / Unmarked switch exists and the choice is remembered', /id="qaSeg"/.test(html) && /store\('mark'/.test(script) && /load\('mark', 'on'\)/.test(script));
+check('Help explains marking estimates', /<dt>Marking estimates<\/dt>/.test(html) && /dashed edges/.test(html));
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
