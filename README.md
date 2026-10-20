@@ -24,6 +24,6 @@ The building is in Bangkok and the weather is New York, so the weather is contex
 
 ## Credits
 
-- CU-BEMS: Pipattanasomporn et al., *CU-BEMS, smart building electricity consumption and indoor environmental sensor datasets*, Scientific Data 7, 241 (2020), [doi:10.1038/s41597-020-00582-3](https://doi.org/10.1038/s41597-020-00582-3) (CC BY 4.0). Dataset: [doi:10.6084/m9.figshare.11726517](https://doi.org/10.6084/m9.figshare.11726517). The article does not state a licence for the data files, so check the Figshare record before redistributing them.
+- CU-BEMS: Pipattanasomporn et al., *CU-BEMS, smart building electricity consumption and indoor environmental sensor datasets*, Scientific Data 7, 241 (2020), [doi:10.1038/s41597-020-00582-3](https://doi.org/10.1038/s41597-020-00582-3) (CC BY 4.0). Dataset: [doi:10.6084/m9.figshare.11726517](https://doi.org/10.6084/m9.figshare.11726517) (CC BY 4.0). Changes made: `data/cubems_week.json` is one week of it, reshaped, with gaps estimated in the app. Not endorsed by the authors.
 - Weather: [Open-Meteo.com](https://open-meteo.com/), CC BY 4.0. The free API is non-commercial.
 - three.js r128 (MIT), loaded from cdnjs.
