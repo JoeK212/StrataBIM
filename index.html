@@ -294,7 +294,7 @@ button:disabled:hover{border-color:var(--line)}
 <div class="modal" id="help" hidden>
   <div class="modal-card help-card" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
     <h2 id="helpTitle">How to read STRATA</h2>
-    <p class="lead">A 3D model of a seven-floor office. Each box is a zone, coloured by the layer you pick. The numbers are generated for now, not measured (see About the data).</p>
+    <p class="lead">A 3D model of a seven-floor office. Each box is a zone, coloured by the layer you pick. By default it replays one week of measured data from an office in Bangkok; a simulated feed is the alternative (see About the data).</p>
 
     <h3>Move around</h3>
     <ul>
@@ -312,7 +312,7 @@ button:disabled:hover{border-color:var(--line)}
       <dt>Density</dt>
       <dd>Power per unit of floor area, in W/ft² or W/m². Use it when zones differ a lot in size: a big lobby always draws more kW than a closet, but density shows which one is working harder for its size. The building figure is area-weighted.</dd>
       <dt>Temp</dt>
-      <dd>Indoor air temperature in the zone.</dd>
+      <dd>Indoor air temperature in the zone. In the CU-BEMS replay, temperature is estimated for every zone before about Wednesday 3 PM and for zones with no temperature sensor, so those colours are not measurements. The zone card says when a value is estimated.</dd>
       <dt>People</dt>
       <dd>Estimated occupants as a share of what the zone holds. In the CU-BEMS replay this is inferred from lighting and plug load, because the dataset has no people counts.</dd>
     </dl>
@@ -354,7 +354,7 @@ button:disabled:hover{border-color:var(--line)}
       <dt>New York weather</dt>
       <dd>The outdoor temperature comes from hourly Open-Meteo records for Central Park, New York. The building was measured in Bangkok, so the weather is shown for context and does not explain its loads.</dd>
       <dt>Estimates</dt>
-      <dd>The raw data has gaps. Temperature and humidity sensors only start reporting around midweek, so earlier values are estimated from the building's own later readings. Floor 1 has no sensors, and one zone per floor has no HVAC meter. The zone card marks every estimated value, and the Building section lists what is estimated.</dd>
+      <dd>The raw data has gaps, and none are shown as real readings. Temperature and humidity sensors sit on a flat, repeated value until about Wednesday 3 PM, and any run of 6 hours or more of an identical reading is treated as a stuck sensor and ignored. Floor 1 and one zone on each other floor have no temperature sensor, and 9 zones lack an HVAC, lighting or plug meter. Missing temperature and humidity are filled from the same floor, then the whole building, and when no zone is reporting, from the building's occupied and empty readings. In this office the occupied readings are cooler, so an empty zone, such as floor 1 on a Monday morning, is estimated warmer than a busy one. An unmetered load reads 0 and is labelled not metered. The zone card marks every estimated value, and the Building section lists what is estimated. Estimated temperatures never raise Running warm.</dd>
       <dt>Simulated</dt>
       <dd>Two faults are planted so the alerts have something to find: stuck cooling in one zone overnight, and a cooling failure in another zone for a few daytime hours. The note at the bottom of the panel says which zones and when. New simulated building changes the number of floors and zones, the footprint, the weekday schedule or the climate, and where the faults land. Reference office returns to the default seven-floor, 33-zone building.</dd>
     </dl>
@@ -376,7 +376,7 @@ button:disabled:hover{border-color:var(--line)}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 const TOOL_NAME = 'STRATA';
 
 const MIN_PER_DAY = 1440;

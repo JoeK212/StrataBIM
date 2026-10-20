@@ -1,3 +1,7 @@
+v1.3.1 - 2026-10-20 - Help text corrected for the CU-BEMS replay
+
+The Help intro no longer says the numbers are generated; it says the default is a replay of measured Bangkok data. The Temp layer entry now says temperature is estimated before about Wednesday 3 PM and for zones without a sensor. The Estimates entry now explains the 6-hour flat-run masking, the fill order (floor, building, occupancy model), why an empty zone such as floor 1 on a Monday morning reads warmer than an occupied one, and that unmetered loads show 0. No behaviour change in the dashboard.
+
 v1.3.0 - 2026-10-20 - CU-BEMS replay: the dashboard plays back one week of measured office data with New York weather outdoors
 
 STRATA now reads data/cubems_week.json (33 zones, 7 floors, every 10 minutes: HVAC, lighting, plug, temperature, humidity, light level) and data/nyc_weather.json (hourly Open-Meteo, Central Park) when served over http, and replays them Monday to Sunday. A Data source switch in the panel flips between CU-BEMS replay (the default when the files load) and the simulation; the choice is remembered. Opened straight from disk, or if the files are missing or malformed, it falls back to the simulation and says why. The one fetch in the page is limited to those two same-origin files.

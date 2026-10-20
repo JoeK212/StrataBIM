@@ -238,5 +238,10 @@ check('imported zones borrow a source zone by floor and scale by area', /z\.inde
 check('Data source switch exists and the choice is remembered', /id="srcSeg"/.test(html) && /store\('source', src\)/.test(script) && /load\('source', 'data'\)/.test(script));
 check('test_data.py exists', fs.existsSync(path.join(dir, 'test_data.py')));
 
+sectionHeader('v1.3.1 Help accuracy');
+check('Help no longer says the numbers are generated', !/numbers are generated for now/.test(html) && /replays one week of measured data/.test(html));
+check('Help Temp layer explains estimated temperature', /Temp<\/dt>\s*<dd>[^<]*estimated for every zone before about Wednesday 3 PM/.test(html));
+check('Help Estimates explains masking, fill order and occupancy effect', /6 hours or more of an identical reading/.test(html) && /from the same floor, then the whole building/.test(html) && /empty zone[^.]*estimated warmer/.test(html) && /labelled not metered/.test(html));
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
