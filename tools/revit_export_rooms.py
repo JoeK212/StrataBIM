@@ -19,6 +19,8 @@ modify the model and opens no transaction.
 Optional Room text parameters (create them as project parameters on the Rooms category):
   STRATA_Zone    rooms with the same value on the same level become one coloured zone
   STRATA_Sensor  a sensor ID to attach to the zone (shown in the viewer, used later for live data)
+  STRATA_Conditioned  Yes or No. No marks a space as unconditioned (no HVAC in the simulation).
+                 Leave blank to let the viewer guess from the name (roof, shaft, stair, ...).
 
 Units: the file is in metres and square metres; Revit's internal feet are converted here.
 Coordinates are Revit internal coordinates (x east, y north); the viewer re-centres the model.
@@ -34,6 +36,8 @@ SCHEMA = "strata-model-1"
 MIN_AREA_M2 = 2.0
 PARAM_ZONE = "STRATA_Zone"
 PARAM_SENSOR = "STRATA_Sensor"
+PARAM_COND = "STRATA_Conditioned"
+MIN_STOREY = 2.0
 MIN_LEVEL_H = 2.4
 MAX_LEVEL_H = 6.0
 DEFAULT_LEVEL_H = 3.5
@@ -98,7 +102,12 @@ def split_loops(loops):
 
 
 def level_table(rooms):
-    """Sorted unique levels with a plausible storey height for each."""
+    """Sorted unique levels with a plausible storey height for each.
+
+    A level's height is the distance up to the next level that is at least MIN_STOREY
+    higher. Levels only a metre or so apart (separate blocks on a stepped site, for
+    example) therefore share the same storey above them instead of getting a stub height.
+    """
     seen = {}
     for r in rooms:
         key = (r["level"], round(r["elev"], 3))
@@ -106,18 +115,20 @@ def level_table(rooms):
     keys = sorted(seen, key=lambda k: k[1])
     heights = []
     for i, k in enumerate(keys):
-        if i + 1 < len(keys):
-            heights.append(min(MAX_LEVEL_H, max(MIN_LEVEL_H, keys[i + 1][1] - k[1])))
-        else:
-            heights.append(None)
+        h = None
+        for j in range(i + 1, len(keys)):
+            d = keys[j][1] - k[1]
+            if d >= MIN_STOREY:
+                h = min(MAX_LEVEL_H, max(MIN_LEVEL_H, d))
+                break
+        heights.append(h)
     known = sorted(h for h in heights if h is not None)
-    if heights and heights[-1] is None:
-        if known:
-            top = known[len(known) // 2]
-        else:
-            hint = seen[keys[-1]]
-            top = min(MAX_LEVEL_H, max(MIN_LEVEL_H, hint)) if hint else DEFAULT_LEVEL_H
-        heights[-1] = top
+    if known:
+        top = known[len(known) // 2]
+    else:
+        hint = max(seen.values()) if seen else 0.0
+        top = min(MAX_LEVEL_H, max(MIN_LEVEL_H, hint)) if hint else DEFAULT_LEVEL_H
+    heights = [top if h is None else h for h in heights]
     levels = [{"name": k[0], "elevation": r3(k[1]), "height": r3(h)} for k, h in zip(keys, heights)]
     index = {k: i for i, k in enumerate(keys)}
     return levels, index
@@ -163,6 +174,7 @@ def build_model(project, rooms, mode="auto"):
                 "name": label,
                 "level": li,
                 "sensor": "",
+                "conditioned": None,
                 "area": 0.0,
                 "rooms": [],
             }
@@ -170,6 +182,8 @@ def build_model(project, rooms, mode="auto"):
         z = zones[key]
         if r.get("sensor") and not z["sensor"]:
             z["sensor"] = r["sensor"]
+        if z["conditioned"] is None and r.get("conditioned") is not None:
+            z["conditioned"] = r["conditioned"]
         z["area"] += area
         z["rooms"].append({
             "id": r["id"],
@@ -220,6 +234,15 @@ def built_in_text(el, bip):
         return ""
 
 
+def parse_cond(text):
+    t = (text or "").strip().lower()
+    if t in ("no", "n", "false", "0", "unconditioned"):
+        return False
+    if t in ("yes", "y", "true", "1", "conditioned"):
+        return True
+    return None
+
+
 def read_rooms(doc, api):
     """Read every placed Room into a plain dict. api is Autodesk.Revit.DB."""
     opt = api.SpatialElementBoundaryOptions()
@@ -258,6 +281,7 @@ def read_rooms(doc, api):
                 "department": built_in_text(r, api.BuiltInParameter.ROOM_DEPARTMENT),
                 "zone": text_param(r, PARAM_ZONE),
                 "sensor": text_param(r, PARAM_SENSOR),
+                "conditioned": parse_cond(text_param(r, PARAM_COND)),
                 "level": str(lvl.Name),
                 "elev": float(lvl.Elevation) * FT,
                 "area": float(r.Area) * SQFT,
