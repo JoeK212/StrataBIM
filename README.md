@@ -28,4 +28,5 @@ The building is in Bangkok and the weather is New York, so the weather is contex
 - Weather: [Open-Meteo.com](https://open-meteo.com/), CC BY 4.0. The free API is non-commercial.
 - three.js r128 (MIT), loaded from cdnjs.
 
-Joe.K · axisbim.io
+---
+Joe.K · [axisbim.io](https://axisbim.io)
