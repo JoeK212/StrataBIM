@@ -55,7 +55,7 @@ async def main():
         check("33 zone meshes", n == 33, n)
         floors = await page.evaluate("new Set(zones.map(z => z.floor)).size")
         check("7 floors", floors == 7, floors)
-        check("footer shows version", "v1.2.1" in await page.inner_text("#footVersion"))
+        check("footer shows version", "v1.3.0" in await page.inner_text("#footVersion"))
         gl = await page.evaluate("!!renderer.getContext()")
         check("WebGL context created", gl)
         await page.wait_for_timeout(600)
@@ -423,6 +423,109 @@ async def main():
         pwn = await page.evaluate("window.__pwn === undefined && document.querySelectorAll('#zoneCard img, #zoneCard script, #alerts img, #panel img, #brandSub img').length === 0")
         check("markup in project, zone and sensor names is not executed", pwn)
         await page.evaluate("state.model = null; store('model',''); swapBuildingForTest && 0") if False else None
+
+        print("\n== Unconditioned spaces ==")
+        def mk_zone(name, level, x, cond=None, rooms_name=None):
+            z = {"id": name, "name": name, "level": level, "area": 100.0, "rooms": [{"id": name, "name": rooms_name or name, "boundary": [[x, 0], [x + 10, 0], [x + 10, 10], [x, 10]]}]}
+            if cond is not None:
+                z["conditioned"] = cond
+            return z
+        zl = []
+        for lv in range(2):
+            for k, nm in enumerate(["Office %d" % (lv * 10 + i) for i in range(6)]):
+                zl.append(mk_zone(nm, lv, k * 11))
+        zl += [mk_zone("503 Green Roof", 1, 70), mk_zone("Stair 2", 0, 70), mk_zone("Roof Lounge", 1, 82, cond=True),
+               mk_zone("Storage", 0, 82, cond=False), mk_zone("Mechanical", 1, 94, cond=True)]
+        cond_model = {"schema": "strata-model-1", "project": "Cond Test", "levels": [{"name": "L1", "elevation": 0, "height": 3.5}, {"name": "L2", "elevation": 3.5, "height": 3.5}], "zones": zl}
+        fp = os.path.join(HERE, "shots", "cond.json")
+        open(fp, "w", encoding="utf-8").write(json.dumps(cond_model))
+        await page.evaluate("state.layer = 'power'; store('layer', 'power'); state.playing = false;")
+        await page.set_input_files("#modelFile", fp)
+        await page.wait_for_timeout(600)
+        check("loading a model while on Power switches to Density", await page.evaluate("state.layer") == "dens")
+        check("toast says so", "Colouring by density" in await page.inner_text("#toast"))
+        cond = await page.evaluate("Object.fromEntries(zones.map(z => [z.name, z.cond]))")
+        check("roof and stair are unconditioned by name", cond["503 Green Roof"] is False and cond["Stair 2"] is False and cond["Office 0"] is True, cond)
+        check("explicit Yes beats the name guess (Roof Lounge, Mechanical)", cond["Roof Lounge"] is True and cond["Mechanical"] is True, cond)
+        check("explicit No beats the name guess (Storage)", cond["Storage"] is False, cond)
+        r = await page.evaluate("""() => {
+            const out = {};
+            for (const nm of ['503 Green Roof', 'Office 0']) {
+                const z = zones.find(q => q.name === nm);
+                let ac = 0, peakOcc = 0, maxDiff = 0, light = 0, n = 0;
+                for (let m = 0; m < TOTAL_MIN; m += 30) {
+                    const s = sample(z, m);
+                    ac += s.kwAC; peakOcc = Math.max(peakOcc, s.f); light += s.kwLight; n++;
+                    maxDiff = Math.max(maxDiff, Math.abs(s.T - s.to));
+                }
+                out[nm] = { ac: ac, peakOcc: peakOcc, maxDiff: maxDiff, light: light / n, perM2: 0 };
+            }
+            return out;
+        }""")
+        check("unconditioned zone draws zero HVAC all week", r["503 Green Roof"]["ac"] == 0 and r["Office 0"]["ac"] > 10, r)
+        check("unconditioned zone is almost never occupied", r["503 Green Roof"]["peakOcc"] < 0.1, r)
+        check("unconditioned zone temperature stays within 2 C of outdoors", r["503 Green Roof"]["maxDiff"] < 2, r)
+        check("conditioned zone temperature does not follow the weather", r["Office 0"]["maxDiff"] > 2, r)
+        card_idx = await page.evaluate("zones.findIndex(z => z.name === '503 Green Roof')")
+        await page.evaluate("(i) => selectZone(i)", card_idx)
+        await page.wait_for_timeout(300)
+        card = await page.inner_text("#zoneCard")
+        check("zone card says the zone has no conditioning", "Conditioning" in card and "no HVAC" in card, card)
+        summ = await page.inner_text("#simSummary")
+        check("simulation section reports the unconditioned count (3: Green Roof, Stair 2, Storage)", "3 unconditioned zones" in summ, summ)
+        bad = await page.evaluate("""() => {
+            let bad = 0, runs = 0;
+            for (let sd = 1; sd <= 300; sd++) {
+                state.seed = sd; buildScene();
+                runs++;
+                for (const f of faults) if (zones[f.zone].cond === false) bad++;
+                if (faults[0].zone === faults[1].zone) bad++;
+            }
+            return { bad, runs };
+        }""")
+        check("300 seeds: planted faults never land in an unconditioned zone or share a zone", bad["bad"] == 0, bad)
+        await page.evaluate("state.seed = %d; buildScene();" % 20261005)
+        await page.evaluate("state.layer = 'power'; store('layer','power'); clearModel && 0") if False else None
+        await page.click("#refBtn")
+        await page.wait_for_timeout(300)
+        ref = await page.evaluate("""() => {
+            state.t = 14 * 60; evaluate();
+            let tot = 0; zones.forEach(z => { tot += sample(z, state.t).kwTotal; });
+            return { n: zones.length, allCond: zones.every(z => z.cond === true), faultsA: faults[0].zone, faultsB: faults[1].zone, tot: tot };
+        }""")
+        check("reference office untouched: 33 zones, all conditioned", ref["n"] == 33 and ref["allCond"], ref)
+
+        print("\n== Stepped-site levels ==")
+        steps = [("Parking", -5.16, 3.35), ("L1 - Block 35", -1.8, 2.4), ("L1 - Block 37", -1.05, 2.4), ("L1 - Block 43", 0.0, 2.46), ("L2", 2.46, 3.28), ("L3", 5.74, 4.06)]
+        zl2 = []
+        for i, (nm, el, hh) in enumerate(steps):
+            for k in range(2):
+                x = k * 12
+                zl2.append({"id": "%s-%d" % (nm, k), "name": "Office %s %d" % (nm, k), "level": i, "area": 100.0, "rooms": [{"id": "r", "name": "Office", "boundary": [[x, 0], [x + 10, 0], [x + 10, 10], [x, 10]]}]})
+        step_model = {"schema": "strata-model-1", "project": "Stepped", "levels": [{"name": n, "elevation": e, "height": h} for n, e, h in steps], "zones": zl2}
+        fp = os.path.join(HERE, "shots", "stepped.json")
+        open(fp, "w", encoding="utf-8").write(json.dumps(step_model))
+        await page.set_input_files("#modelFile", fp)
+        await page.wait_for_timeout(600)
+        gaps = await page.evaluate("""() => {
+            const lv = state.model.levels, out = [];
+            const e0 = lv[0].elevation;
+            lv.forEach((l, i) => {
+                const zs = meshes.filter((m, k) => zones[k].floor === i);
+                const b = new THREE.Box3(); zs.forEach(m => b.expandByObject(m));
+                let above = null;
+                for (let j = i + 1; j < lv.length; j++) if (lv[j].elevation - l.elevation >= 2) { above = lv[j].elevation - e0; break; }
+                out.push({ name: l.name, height: +l.height.toFixed(2), top: +b.max.y.toFixed(2), gapToNext: above === null ? null : +(above - b.max.y).toFixed(2) });
+            });
+            return out;
+        }""")
+        print("   ", json.dumps([(g["name"], g["height"], g["gapToNext"]) for g in gaps]))
+        check("no level leaves more than a 0.35 m reveal below the next storey", all(g["gapToNext"] is None or 0.25 < g["gapToNext"] < 0.35 for g in gaps), gaps)
+        check("parallel ground-floor blocks are 4.27 m and 3.52 m tall, not stubs", abs(gaps[1]["height"] - 4.26) < 0.02 and abs(gaps[2]["height"] - 3.51) < 0.02, gaps)
+        twice = await page.evaluate("JSON.stringify(normalizeModel(normalizeModel(JSON.parse(JSON.stringify(state.model))).levels ? JSON.parse(JSON.stringify(state.model)) : state.model).levels) === JSON.stringify(state.model.levels)")
+        check("normalising twice gives the same heights (the saved copy reloads unchanged)", twice)
+        await page.click("#refBtn")
+        await page.wait_for_timeout(300)
 
         print("\n== Drag and drop ==")
         good = open(sample, encoding="utf-8").read()

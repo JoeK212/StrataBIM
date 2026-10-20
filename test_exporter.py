@@ -208,6 +208,12 @@ lv, idx = rex.level_table([
 check("level heights come from the gap to the next level, clamped to 2.4 to 6 m", [l["height"] for l in lv][:3] == [4.0, 3.5, 6.0], lv)
 check("top level takes the median of the others", lv[-1]["height"] == 4.0, lv)
 
+lv2, _ = rex.level_table([{"level": n, "elev": z, "height_hint": 3.0} for n, z in [("Parking", -5.16), ("L1 - Block 35", -1.8), ("L1 - Block 37", -1.05), ("L1 - Block 43", 0.0), ("L2", 2.46), ("L3", 5.74)]])
+check("stepped-site levels (blocks 0.75 to 1.8 m apart) run up to the next real storey, not a stub", [l["height"] for l in lv2][:5] == [3.36, 4.26, 3.51, 2.46, 3.28], lv2)
+check("top level takes the median of the others", lv2[-1]["height"] == 3.36, lv2)
+lv3, _ = rex.level_table([{"level": "A", "elev": 0.0, "height_hint": 3.0}, {"level": "B", "elev": 0.5, "height_hint": 3.0}])
+check("two levels under 2 m apart both fall back to a default storey", [l["height"] for l in lv3] == [3.0, 3.0], lv3)
+
 print("\n== End to end with fake Revit objects ==")
 doc = build_office()
 out_path = os.path.join(HERE, "data", "sample_model.json")
@@ -242,6 +248,19 @@ bad = rex.run([out_path, "banana"], api=FakeApi, doc=doc)
 check("unknown grouping mode rejected with guidance", "Unknown grouping mode" in bad, bad)
 empty = rex.run([out_path, "auto"], api=FakeApi, doc=Doc({}, []))
 check("no rooms gives guidance, not a crash", "No placed, enclosed Rooms" in empty, empty)
+
+print("\n== Conditioned parameter ==")
+cdoc = Doc({0: Level("Level 1", 0.0)}, [
+    Room("c1", "1", "Roof Lounge", 0, [rect_loop(0, 0, 9, 9)], 81.0, {"STRATA_Conditioned": "Yes"}),
+    Room("c2", "2", "Storage", 0, [rect_loop(10, 0, 19, 9)], 81.0, {"STRATA_Conditioned": " no "}),
+    Room("c3", "3", "Office", 0, [rect_loop(20, 0, 29, 9)], 81.0, {"STRATA_Conditioned": "maybe"}),
+    Room("c4", "4", "Stair", 0, [rect_loop(30, 0, 39, 9)], 81.0),
+])
+cm, _ = rex.build_model("x", rex.read_rooms(cdoc, FakeApi)[0], "room")
+byname = {z["name"].split(" ", 1)[1]: z["conditioned"] for z in cm["zones"]}
+check("Yes parsed as true, No as false (case and spaces ignored)", byname["Roof Lounge"] is True and byname["Storage"] is False, byname)
+check("unrecognised or missing value stays null so the viewer can guess", byname["Office"] is None and byname["Stair"] is None, byname)
+check("existing sample file still valid without the field", all("conditioned" in z for z in model["zones"]))
 
 ok = sum(results)
 print("\n%d passed, %d failed" % (ok, len(results) - ok))

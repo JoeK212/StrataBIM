@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
 STRATA
-3D building dashboard — colours each zone of a 7-floor office by power, HVAC, temperature or occupancy (simulated feed for now)
+3D building dashboard — colours each zone of a 7-floor office by power, HVAC, temperature or occupancy (replays CU-BEMS measurements, or a simulated feed)
 Joe.K · axisbim.io
 -->
 <html lang="en">
@@ -259,7 +259,13 @@ button:disabled:hover{border-color:var(--line)}
         <ul class="alerts" id="alerts"></ul>
       </section>
       <section class="sec">
-        <h2 class="h">Simulation</h2>
+        <h2 class="h">Data source</h2>
+        <div class="seg" id="srcSeg" role="group" aria-label="Data source">
+          <button type="button" data-src="data" aria-pressed="false">CU-BEMS replay</button>
+          <button type="button" data-src="sim" aria-pressed="true">Simulated</button>
+        </div>
+        <p class="note" id="srcNote"></p>
+        <h2 class="h" style="margin-top:16px">Building</h2>
         <p class="note" id="simSummary"></p>
         <p class="note" id="simNote"></p>
         <div class="btnrow">
@@ -308,7 +314,7 @@ button:disabled:hover{border-color:var(--line)}
       <dt>Temp</dt>
       <dd>Indoor air temperature in the zone.</dd>
       <dt>People</dt>
-      <dd>Estimated occupants as a share of what the zone holds.</dd>
+      <dd>Estimated occupants as a share of what the zone holds. In the CU-BEMS replay this is inferred from lighting and plug load, because the dataset has no people counts.</dd>
     </dl>
     <p>The legend shows the colour range for the layer you picked: dark is low, violet is middle, pink is high, amber is highest. The range is fixed for the building you are viewing, so a colour means the same thing at any time and in any zone. Power and HVAC ranges are sized to each building's own week.</p>
 
@@ -322,9 +328,9 @@ button:disabled:hover{border-color:var(--line)}
     <h3>Alerts</h3>
     <dl>
       <dt>After-hours cooling</dt>
-      <dd>A zone is using more than 2 kW of HVAC power while the building is scheduled off.</dd>
+      <dd>A zone is using more than 2 kW of HVAC power while the building is scheduled off (weekdays before about 6 AM or after about 8 PM, and all weekend).</dd>
       <dt>Running warm</dt>
-      <dd>A zone with people in it is above 26 °C (79 °F).</dd>
+      <dd>A zone with people in it is above 26 °C (79 °F). Estimated temperatures never raise this alert.</dd>
     </dl>
     <p>Click an alert to jump to that zone.</p>
 
@@ -332,17 +338,27 @@ button:disabled:hover{border-color:var(--line)}
     <ul>
       <li>In Revit, place Rooms where you want zones. Optional: add a text parameter STRATA_Zone to group rooms into one zone, and STRATA_Sensor to tag a zone with a sensor ID.</li>
       <li>In Dynamo, add a Python Script node, set it to CPython3, paste in tools/revit_export_rooms.py and run it. It reads the model and writes a small JSON file; it changes nothing in Revit.</li>
-      <li>Choose Load Revit model in the Simulation section, or drop the file onto the model. Your levels and rooms replace the generated building.</li>
+      <li>Choose Load Revit model in the Building section, or drop the file onto the model. Your levels and rooms replace the generated building.</li>
     </ul>
-    <p>The readings on an imported model are still simulated. Remove model returns to the reference office.</p>
+    <p>Zones named like roofs, shafts, stairs, terraces or garages are treated as unconditioned: no HVAC, almost no people, and a temperature that follows the weather. To override that for a zone, add a text parameter STRATA_Conditioned to Rooms and set it to Yes or No.</p>
+    <p>An imported model runs on whichever data source is selected. In the CU-BEMS replay, each of your zones borrows the readings of a CU-BEMS zone on the matching floor (floors wrap around after seven) and scales them by floor area. Remove model returns to the reference office.</p>
 
     <h3>Units</h3>
     <p>Imperial and Metric change how values display. Power (kW) and energy (kWh) are the same in both. In the zone card, temperature, area and light level show the other unit beside the main value.</p>
 
     <h3>About the data</h3>
-    <p>Everything here is simulated from an office schedule and a placeholder outdoor temperature curve. Two faults are planted so the alerts have something to find: stuck cooling in one zone overnight, and a cooling failure in another zone for a few daytime hours. The Simulation note at the bottom of the panel says which zones and when.</p>
-    <p>New simulated building changes the number of floors and zones, the footprint, the weekday schedule or the climate (a hotter or colder city shifts cooling and heating), and where the faults land. Reference office returns to the default seven-floor, 33-zone building.</p>
-    <p>The plan is to replace the simulation with measured data from the CU-BEMS office dataset, plus real New York weather. The viewer will not change.</p>
+    <p>Data source switches between two feeds. CU-BEMS replay is the default when the data files load. Simulated is generated from an office schedule and a placeholder outdoor temperature curve.</p>
+    <dl>
+      <dt>CU-BEMS replay</dt>
+      <dd>One week of measured data from an office building at Chulalongkorn University in Bangkok (Scientific Data, 2020): 33 zones on 7 floors, every 10 minutes, with HVAC, lighting and plug power plus temperature, humidity and light level. It is played back Monday to Sunday.</dd>
+      <dt>New York weather</dt>
+      <dd>The outdoor temperature comes from hourly Open-Meteo records for Central Park, New York. The building was measured in Bangkok, so the weather is shown for context and does not explain its loads.</dd>
+      <dt>Estimates</dt>
+      <dd>The raw data has gaps. Temperature and humidity sensors only start reporting around midweek, so earlier values are estimated from the building's own later readings. Floor 1 has no sensors, and one zone per floor has no HVAC meter. The zone card marks every estimated value, and the Building section lists what is estimated.</dd>
+      <dt>Simulated</dt>
+      <dd>Two faults are planted so the alerts have something to find: stuck cooling in one zone overnight, and a cooling failure in another zone for a few daytime hours. The note at the bottom of the panel says which zones and when. New simulated building changes the number of floors and zones, the footprint, the weekday schedule or the climate, and where the faults land. Reference office returns to the default seven-floor, 33-zone building.</dd>
+    </dl>
+    <p>To use the replay, serve the folder over http (for example python -m http.server 8888). Opening index.html straight from disk works, but only with the simulated feed.</p>
 
     <h3>Terms</h3>
     <dl>
@@ -360,7 +376,7 @@ button:disabled:hover{border-color:var(--line)}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.3.0';
 const TOOL_NAME = 'STRATA';
 
 const MIN_PER_DAY = 1440;
@@ -369,7 +385,7 @@ const TOTAL_MIN = DAYS * MIN_PER_DAY;
 const BASE_DATE = new Date(2026, 9, 5);
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const REF_FLOORS = [5, 5, 5, 5, 5, 4, 4];
+const REF_FLOORS = [4, 4, 5, 5, 5, 5, 5];
 const ARCHETYPES = [
   { name: 'Standard office', desc: 'Typical weekday schedule in a mild climate.', shift: 0, weekend: 0.03, climate: 0 },
   { name: 'Early-start office', desc: 'Staff arrive and leave about 90 minutes earlier.', shift: -1.5, weekend: 0.03, climate: 0 },
@@ -383,10 +399,20 @@ const GAP = 0.5;
 const SQM_TO_SQFT = 10.7639;
 const DEFAULT_SEED = 20261005;
 const MODEL_SCHEMA = 'strata-model-1';
+const MIN_STOREY = 2;
+const MIN_LEVEL_H = 2.4;
+const MAX_LEVEL_H = 6;
+const UNCOND_RE = /roof|shaft|stair|elevator|mechanical|\bmech\b|chase|void|terrace|balcony|garage|parking|plenum|riser|exterior|outdoor|deck|canopy/i;
 const MAX_MODEL_ZONES = 600;
 const MAX_MODEL_POINTS = 250000;
 const MAX_MODEL_BYTES = 25 * 1024 * 1024;
 const STORE_MODEL_CHARS = 3500000;
+const DATA_FILES = { cu: 'data/cubems_week.json', wx: 'data/nyc_weather.json' };
+const DATA_STEP = 10;
+const FLAT_RUN = 36;
+const REF_AREA = 56 * 30;
+const DATA_CHANNELS = ['ac', 'light', 'plug', 'temp', 'rh', 'lux'];
+const DATA_TEMP_RANGE = { lo: 18, hi: 30 };
 const SPEEDS = [1, 60, 600, 3600];
 const STOPS = [[0, '#1D2550'], [0.4, '#6A4CF0'], [0.75, '#E85FA0'], [1, '#FFC857']];
 const REDUCE_MOTION = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -403,6 +429,8 @@ Object.keys(LAYERS).forEach(k => { LAYERS[k].id = k; });
 
 const state = {
   model: null,
+  source: 'sim',
+  wantData: true,
   seed: DEFAULT_SEED,
   layer: 'power',
   units: 'imperial',
@@ -573,6 +601,16 @@ function checkModel(o) {
   return '';
 }
 
+function storeyHeights(levels) {
+  return levels.map((l, i) => {
+    for (let j = i + 1; j < levels.length; j++) {
+      const d = levels[j].elevation - l.elevation;
+      if (d >= MIN_STOREY) return clamp(d, MIN_LEVEL_H, MAX_LEVEL_H);
+    }
+    return l.height;
+  });
+}
+
 function normalizeModel(o) {
   const order = o.levels.map((l, i) => i).sort((a, b) => o.levels[a].elevation - o.levels[b].elevation);
   const remap = {};
@@ -582,6 +620,8 @@ function normalizeModel(o) {
     elevation: o.levels[i].elevation,
     height: o.levels[i].height
   }));
+  const hs = storeyHeights(levels);
+  levels.forEach((l, i) => { l.height = hs[i]; });
   const zonesOut = o.zones.map(z => {
     const rooms = z.rooms.map(r => ({
       id: String(r.id || ''),
@@ -597,6 +637,7 @@ function normalizeModel(o) {
       name: String(z.name || 'Zone'),
       level: remap[z.level],
       sensor: String(z.sensor || ''),
+      conditioned: typeof z.conditioned === 'boolean' ? z.conditioned : null,
       area: Math.max(1, area),
       rooms: rooms
     };
@@ -663,6 +704,7 @@ function zonesFromModel(model, seed) {
       acEff: 0.8 + rnd() * 0.5,
       bias: (rnd() - 0.5) * 1.6,
       win: rnd(),
+      cond: mz.conditioned === true ? true : mz.conditioned === false ? false : !UNCOND_RE.test([mz.name].concat(mz.rooms.map(r => r.name)).join(' ')),
       seed: (seed * 7919 + idx * 104729) | 0,
       rooms: mz.rooms,
       nrooms: mz.rooms.length,
@@ -707,6 +749,7 @@ function buildZones(seed) {
           acEff: 0.8 + rnd() * 0.5,
           bias: (rnd() - 0.5) * 1.6,
           win: rnd(),
+          cond: true,
           seed: (seed * 7919 + idx * 104729) | 0
         });
         k++;
@@ -716,11 +759,17 @@ function buildZones(seed) {
   return list;
 }
 
-function buildFaults(seed, count) {
+function buildFaults(seed, list) {
   const rnd = mulberry32(seed ^ 0x5bd1e995);
-  const a = Math.floor(rnd() * count);
-  let b = Math.floor(rnd() * count);
-  if (b === a) b = (a + 1) % count;
+  let pool = [];
+  list.forEach((z, i) => { if (z.cond !== false) pool.push(i); });
+  if (pool.length < 2) pool = list.map((z, i) => i);
+  const n = pool.length;
+  const ai = Math.floor(rnd() * n);
+  let bi = Math.floor(rnd() * n);
+  if (bi === ai) bi = (ai + 1) % n;
+  const a = pool[ai];
+  const b = pool[bi];
   const dA = seed === DEFAULT_SEED ? 2 : 1 + Math.floor(rnd() * 3);
   const dB = seed === DEFAULT_SEED ? 3 : 1 + Math.floor(rnd() * 4);
   return [
@@ -771,25 +820,27 @@ function outdoorC(m) {
   return base + layout.climate + 5.5 * Math.sin((h - 9) / 24 * 2 * Math.PI);
 }
 
-function sample(z, m) {
-  const f = occFrac(m, z);
+function simSample(z, m) {
+  const cond = z.cond !== false;
+  const f = occFrac(m, z) * (cond ? 1 : 0.08);
   const s = schedS(m);
   const to = outdoorC(m);
   const h = (m % MIN_PER_DAY) / 60;
   const day = h > 6 && h < 18 ? Math.sin(Math.PI * (h - 6) / 12) : 0;
   const stuck = faultFactor(z, m, 'stuck');
   const fail = faultFactor(z, m, 'fail');
-  const lightLevel = clamp(0.05 + 0.95 * Math.min(1, f * 1.3) * (1 - 0.3 * day * z.win), 0, 1);
+  const lightLevel = clamp(0.05 + 0.95 * Math.min(1, f * 1.3) * (1 - 0.3 * day * z.win), 0, 1) * (cond ? 1 : 0.3);
   const kwLight = z.area * z.lightW * lightLevel / 1000;
-  const kwPlug = z.area * z.plugW * (0.3 + 0.7 * f) / 1000;
+  const kwPlug = z.area * z.plugW * (0.3 + 0.7 * f) / 1000 * (cond ? 1 : 0.1);
   const cool = 38 * clamp((to - 10) / 16, 0, 1) * (0.35 + 0.65 * f) * z.acEff * s;
   const heat = 20 * clamp((8 - to) / 12, 0, 1) * s;
   const fan = 5 * s + 0.3;
   let kwAC = z.area * (fan + cool + heat) / 1000;
-  kwAC = kwAC * (1 - 0.8 * fail) + z.area * 24 / 1000 * stuck;
+  kwAC = cond ? kwAC * (1 - 0.8 * fail) + z.area * 24 / 1000 * stuck : 0;
   const tDay = 23 + z.bias + 0.08 * (to - 18) + 1.2 * f;
   const tNight = 23 + z.bias + 0.2 * (to - 23);
-  const T = s * tDay + (1 - s) * tNight + 3.5 * fail * s - 1.5 * stuck * (1 - s) + (smoothNoise(z.seed + 1, m, 30) - 0.5) * 0.4;
+  const noise = (smoothNoise(z.seed + 1, m, 30) - 0.5) * 0.4;
+  const T = cond ? s * tDay + (1 - s) * tNight + 3.5 * fail * s - 1.5 * stuck * (1 - s) + noise : to + 1.5 * day + noise;
   const RH = clamp(52 - 1.0 * (T - 23) + 0.4 * (to - 15) + (smoothNoise(z.seed + 2, m, 60) - 0.5) * 8, 25, 80);
   const lux = Math.round(60 + 440 * lightLevel + 230 * day * z.win);
   return {
@@ -806,6 +857,255 @@ function sample(z, m) {
     RH: RH,
     lux: lux
   };
+}
+
+const DATA = { status: 'idle', note: '', prep: null };
+
+function dataMode() { return state.source === 'data' && DATA.status === 'ready' && !!DATA.prep; }
+
+function fetchJson(url) {
+  return fetch(url, { cache: 'no-cache' }).then(r => {
+    if (!r.ok) throw new Error(url + ' returned ' + r.status);
+    return r.json();
+  });
+}
+
+function checkData(cu, wx) {
+  if (!cu || !cu.meta || !Array.isArray(cu.zones) || !cu.zones.length) return 'cubems_week.json is not in the expected format.';
+  const N = TOTAL_MIN / DATA_STEP;
+  if (cu.meta.samples !== N || cu.meta.step_min !== DATA_STEP) return 'cubems_week.json must hold one week at ' + DATA_STEP + ' minute steps (' + N + ' samples).';
+  for (const z of cu.zones) {
+    if (typeof z.floor !== 'number') return 'Zone ' + z.id + ' in cubems_week.json has no floor number.';
+    for (const ch of DATA_CHANNELS) {
+      if (z[ch] !== undefined && (!Array.isArray(z[ch]) || z[ch].length !== N)) return 'Zone ' + z.id + ' has a ' + ch + ' series of the wrong length.';
+    }
+  }
+  if (!wx || !wx.meta || wx.meta.step_min !== 60 || !Array.isArray(wx.tempC) || wx.tempC.length < DAYS * 24 || !Array.isArray(wx.rh) || wx.rh.length !== wx.tempC.length) return 'nyc_weather.json must hold at least one week of hourly temperature and humidity.';
+  return null;
+}
+
+function pctOf(arr, q) {
+  const b = Array.from(arr).sort((x, y) => x - y);
+  return b[Math.floor(q * (b.length - 1))];
+}
+
+function prepareData(cu, wx) {
+  const N = cu.meta.samples;
+  const floorNums = Array.from(new Set(cu.zones.map(z => z.floor))).sort((a, b) => a - b);
+  const nF = floorNums.length;
+  const isNum = v => typeof v === 'number' && isFinite(v);
+  const zs = cu.zones.map(z => {
+    const S = { id: z.id, floor: floorNums.indexOf(z.floor), has: {} };
+    ['ac', 'light', 'plug', 'lux'].forEach(ch => {
+      S.has[ch] = Array.isArray(z[ch]);
+      S[ch] = new Float32Array(N);
+      if (S.has[ch]) for (let i = 0; i < N; i++) S[ch][i] = isNum(z[ch][i]) && z[ch][i] > 0 ? z[ch][i] : 0;
+    });
+    ['temp', 'rh'].forEach(ch => {
+      S.has[ch] = Array.isArray(z[ch]);
+      S[ch] = new Float32Array(N);
+      S[ch + 'Ok'] = new Uint8Array(N);
+      if (!S.has[ch]) return;
+      const a = z[ch];
+      for (let i = 0; i < N; i++) if (isNum(a[i])) { S[ch][i] = a[i]; S[ch + 'Ok'][i] = 1; }
+      let s0 = 0;
+      for (let i = 1; i <= N; i++) {
+        if (i === N || !isNum(a[i]) || a[i] !== a[s0]) {
+          if (i - s0 >= FLAT_RUN) for (let k = s0; k < i; k++) S[ch + 'Ok'][k] = 0;
+          s0 = i;
+        }
+      }
+    });
+    S.hasLP = S.has.light || S.has.plug;
+    S.f = new Float32Array(N);
+    S.lightN = new Float32Array(N);
+    if (S.hasLP) {
+      const lp = new Float32Array(N);
+      for (let i = 0; i < N; i++) lp[i] = S.light[i] + S.plug[i];
+      const lo = pctOf(lp, 0.05);
+      const hi = pctOf(lp, 0.95);
+      for (let i = 0; i < N; i++) S.f[i] = hi - lo > 1e-6 ? clamp((lp[i] - lo) / (hi - lo), 0, 1) : 0;
+    }
+    if (S.has.light) {
+      const hi = pctOf(S.light, 0.95);
+      for (let i = 0; i < N; i++) S.lightN[i] = hi > 1e-6 ? clamp(S.light[i] / hi, 0, 1) : 0;
+    }
+    return S;
+  });
+  const byFloor = floorNums.map((fn, k) => zs.filter(S => S.floor === k));
+
+  const bldF = new Float32Array(N);
+  let nb = 0;
+  zs.forEach(S => { if (S.hasLP) { nb++; for (let i = 0; i < N; i++) bldF[i] += S.f[i]; } });
+  for (let i = 0; i < N; i++) bldF[i] = nb ? bldF[i] / nb : 0;
+  byFloor.forEach(list => {
+    const have = list.filter(S => S.hasLP);
+    const fl = new Float32Array(N);
+    if (have.length) {
+      have.forEach(S => { for (let i = 0; i < N; i++) fl[i] += S.f[i] / have.length; });
+    } else fl.set(bldF);
+    list.forEach(S => { if (!S.hasLP) { S.f.set(fl); S.fEst = true; } });
+  });
+
+  const calib = { temp: { on: [0, 0], off: [0, 0], d: [25.5, 24.5] }, rh: { on: [0, 0], off: [0, 0], d: [55, 58] } };
+  ['temp', 'rh'].forEach(ch => {
+    zs.forEach(S => {
+      if (!S.has[ch]) return;
+      for (let i = 0; i < N; i++) {
+        if (!S[ch + 'Ok'][i]) continue;
+        if (S.f[i] > 0.6) { calib[ch].on[0] += S[ch][i]; calib[ch].on[1]++; }
+        else if (S.f[i] < 0.15) { calib[ch].off[0] += S[ch][i]; calib[ch].off[1]++; }
+      }
+    });
+  });
+  const cal = ch => ({
+    on: calib[ch].on[1] ? calib[ch].on[0] / calib[ch].on[1] : calib[ch].d[0],
+    off: calib[ch].off[1] ? calib[ch].off[0] / calib[ch].off[1] : calib[ch].d[1]
+  });
+  const cT = cal('temp');
+  const cR = cal('rh');
+
+  const fill = (ch, model) => {
+    const bSum = new Float32Array(N), bCnt = new Uint16Array(N);
+    const fSum = byFloor.map(() => new Float32Array(N)), fCnt = byFloor.map(() => new Uint16Array(N));
+    zs.forEach(S => {
+      if (!S.has[ch]) return;
+      for (let i = 0; i < N; i++) if (S[ch + 'Ok'][i]) {
+        bSum[i] += S[ch][i]; bCnt[i]++;
+        fSum[S.floor][i] += S[ch][i]; fCnt[S.floor][i]++;
+      }
+    });
+    zs.forEach(S => {
+      const out = new Float32Array(N);
+      const est = new Uint8Array(N);
+      for (let i = 0; i < N; i++) {
+        if (S.has[ch] && S[ch + 'Ok'][i]) out[i] = S[ch][i];
+        else {
+          est[i] = 1;
+          if (fCnt[S.floor][i]) out[i] = fSum[S.floor][i] / fCnt[S.floor][i];
+          else if (bCnt[i]) out[i] = bSum[i] / bCnt[i];
+          else out[i] = model(S.f[i]);
+        }
+      }
+      S[ch + 'Final'] = out;
+      S[ch + 'Est'] = est;
+    });
+  };
+  fill('temp', f => cT.off + (cT.on - cT.off) * f);
+  fill('rh', f => clamp(cR.off + (cR.on - cR.off) * f, 25, 90));
+  zs.forEach(S => {
+    S.T = S.tempFinal; S.tEst = S.tempEst;
+    S.RH = S.rhFinal; S.rEst = S.rhEst;
+    S.lEst = new Uint8Array(N);
+    let k0 = 0;
+    if (S.has.lux) { while (k0 < N - 1 && S.lux[k0 + 1] === S.lux[0]) k0++; k0++; if (k0 < FLAT_RUN) k0 = 0; } else k0 = N;
+    for (let i = 0; i < k0; i++) {
+      S.lux[i] = 40 + 460 * (S.has.light ? S.lightN[i] : S.f[i]);
+      S.lEst[i] = 1;
+    }
+  });
+
+  const starts = zs.filter(S => S.has.temp).map(S => { let k = 0; while (k < N && !S.tempOk[k]) k++; return k; }).sort((a, b) => a - b);
+  const tStart = starts.length ? starts[Math.floor(starts.length / 2)] * DATA_STEP : null;
+  const arr = a => Float32Array.from(a.map(v => (isNum(v) ? v : 0)));
+  return {
+    N: N, nFloors: nF, zs: zs, byFloor: byFloor, tStart: tStart,
+    unmetered: zs.filter(S => !S.has.ac || !S.has.light || !S.has.plug).length,
+    noTemp: zs.filter(S => !S.has.temp).length,
+    wx: { n: wx.tempC.length, t: arr(wx.tempC), rh: arr(wx.rh), sun: arr(wx.solarWm2 || []) },
+    cuMeta: cu.meta, wxMeta: wx.meta
+  };
+}
+
+function mapZone(z) {
+  const P = DATA.prep;
+  const list = P.byFloor[((z.floor % P.nFloors) + P.nFloors) % P.nFloors];
+  z.src = list[z.index % list.length];
+  z.srcScale = layout.ref ? 1 : z.area / (REF_AREA / list.length);
+}
+
+function dataSched(m) {
+  const d = Math.floor(m / MIN_PER_DAY);
+  if (d > 4) return 0;
+  const t = (m - d * MIN_PER_DAY) / 60;
+  return smooth(t, 6, 7.5) - smooth(t, 19, 20.5);
+}
+
+function dataSample(z, m) {
+  const P = DATA.prep;
+  if (!z.src) mapZone(z);
+  const S = z.src;
+  const x = clamp(m / DATA_STEP, 0, P.N - 1);
+  const i0 = Math.floor(x);
+  const i1 = Math.min(i0 + 1, P.N - 1);
+  const u = x - i0;
+  const L = a => a[i0] + (a[i1] - a[i0]) * u;
+  const wxi = clamp(m / 60, 0, P.wx.n - 1);
+  const w0 = Math.floor(wxi);
+  const w1 = Math.min(w0 + 1, P.wx.n - 1);
+  const wu = wxi - w0;
+  const to = P.wx.t[w0] + (P.wx.t[w1] - P.wx.t[w0]) * wu;
+  const toRH = P.wx.rh[w0] + (P.wx.rh[w1] - P.wx.rh[w0]) * wu;
+  const cond = z.cond !== false;
+  const sc = z.srcScale;
+  const f = L(S.f) * (cond ? 1 : 0.08);
+  const kwLight = L(S.light) * sc * (cond ? 1 : 0.3);
+  const kwPlug = L(S.plug) * sc * (cond ? 1 : 0.1);
+  const kwAC = cond ? L(S.ac) * sc : 0;
+  const near = Math.round(x);
+  const T = cond ? L(S.T) : to + 1;
+  return {
+    f: f,
+    occ: Math.round(f * z.cap),
+    s: dataSched(m),
+    to: to,
+    toRH: toRH,
+    kwLight: kwLight,
+    kwPlug: kwPlug,
+    kwAC: kwAC,
+    kwTotal: kwLight + kwPlug + kwAC,
+    wm2: (kwLight + kwPlug + kwAC) * 1000 / z.area,
+    T: T,
+    RH: cond ? L(S.RH) : toRH,
+    lux: Math.round(L(S.lux) * (cond ? 1 : 0.5)),
+    estT: cond && S.tEst[near] === 1,
+    estRH: cond && S.rEst[near] === 1,
+    estLux: cond && S.lEst[near] === 1
+  };
+}
+
+function sample(z, m) {
+  return dataMode() ? dataSample(z, m) : simSample(z, m);
+}
+
+function loadData() {
+  if (location.protocol === 'file:') {
+    DATA.status = 'unavailable';
+    DATA.note = 'Browsers block data files when a page is opened straight from disk. Serve this folder over http (for example python -m http.server 8888) to use the CU-BEMS replay.';
+    return Promise.resolve(false);
+  }
+  DATA.status = 'loading';
+  return Promise.all([fetchJson(DATA_FILES.cu), fetchJson(DATA_FILES.wx)]).then(res => {
+    const err = checkData(res[0], res[1]);
+    if (err) throw new Error(err);
+    DATA.prep = prepareData(res[0], res[1]);
+    DATA.status = 'ready';
+    return true;
+  }).catch(e => {
+    DATA.status = 'error';
+    DATA.prep = null;
+    DATA.note = 'The CU-BEMS data could not be loaded (' + String(e && e.message ? e.message : e) + '). Showing the simulation instead.';
+    return false;
+  });
+}
+
+function metaRange(start, days) {
+  const mm = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(start || ''));
+  if (!mm) return '';
+  const d0 = new Date(Date.UTC(+mm[1], +mm[2] - 1, +mm[3]));
+  const d1 = new Date(d0.getTime() + (days - 1) * 86400000);
+  const a = d0.getUTCDate() + (d0.getUTCMonth() === d1.getUTCMonth() ? '' : ' ' + MONTHS[d0.getUTCMonth()]);
+  return a + '–' + d1.getUTCDate() + ' ' + MONTHS[d1.getUTCMonth()] + ' ' + d1.getUTCFullYear();
 }
 
 function conv(kind, v) {
@@ -861,6 +1161,14 @@ function hasAlt(kind) { return kind === 'temp' || kind === 'area' || kind === 'l
 function clockLabel(m) {
   const d = Math.floor(m / MIN_PER_DAY);
   const mm = Math.floor(m - d * MIN_PER_DAY);
+  if (dataMode()) {
+    let h2 = Math.floor(mm / 60);
+    const mi2 = mm % 60;
+    const ap2 = h2 >= 12 ? 'PM' : 'AM';
+    h2 = h2 % 12;
+    if (h2 === 0) h2 = 12;
+    return DAY_NAMES[d] + ', ' + h2 + ':' + (mi2 < 10 ? '0' : '') + mi2 + ' ' + ap2;
+  }
   const date = new Date(BASE_DATE.getTime());
   date.setDate(date.getDate() + d);
   let hh = Math.floor(mm / 60);
@@ -1044,7 +1352,7 @@ function buildScene() {
   state.floor = -1;
   state.skippedRooms = 0;
   zones = state.model ? zonesFromModel(state.model, state.seed) : buildZones(state.seed);
-  faults = buildFaults(state.seed, zones.length);
+  faults = buildFaults(state.seed, zones);
   cur = new Array(zones.length);
   ranges = computeRanges();
   const ink = new THREE.Color(cssVar('--ink'));
@@ -1140,6 +1448,7 @@ function computeRanges() {
 }
 
 function rangeOf(L) {
+  if (L.id === 'temp' && dataMode()) return DATA_TEMP_RANGE;
   if (ranges && ranges[L.id]) return { lo: 0, hi: ranges[L.id] };
   return { lo: L.lo, hi: L.hi };
 }
@@ -1269,7 +1578,7 @@ function computeAlerts() {
     const r = cur[i];
     if (r.s < 0.15 && r.kwAC > 2) {
       out.push({ i: i, hot: true, text: 'After-hours cooling', val: r.kwAC, kind: 'kw', score: r.kwAC });
-    } else if (r.f > 0.25 && r.T > 26) {
+    } else if (r.f > 0.25 && r.T > 26 && !r.estT) {
       out.push({ i: i, hot: false, text: 'Running warm', val: r.T, kind: 'temp', score: r.T - 20 });
     }
   }
@@ -1300,8 +1609,8 @@ function updatePanel() {
     statCell('Power', fmt('kw', power)) +
     statCell('Energy today', fmt('kwh', kwh)) +
     statCell('Indoor average', fmt('temp', tin), hasAlt('temp') ? fmtAlt('temp', tin) : '') +
-    statCell('Outdoor', fmt('temp', to), fmtAlt('temp', to)) +
-    statCell('People in building', String(people), 'of ' + cap) +
+    statCell(dataMode() ? 'Outdoor (New York)' : 'Outdoor', fmt('temp', to), fmtAlt('temp', to)) +
+    statCell(dataMode() ? 'People (estimated)' : 'People in building', String(people), 'of ' + cap) +
     statCell('Active alerts', String(alerts.length));
 
   const label = state.sel === null ? 'Whole building' : zoneLabel(zones[state.sel]);
@@ -1316,21 +1625,26 @@ function updatePanel() {
     const z = zones[state.sel];
     const r = cur[state.sel];
     $('#zoneTitle').textContent = state.model ? layout.levelNames[z.floor] + ' · ' + z.name : 'Floor ' + (z.floor + 1) + ' · Zone ' + (z.index + 1);
+    const dm = dataMode();
+    const S = dm ? z.src : null;
+    const nm = (ok, label) => (dm && S && !ok ? label + ' (not metered)' : label);
     const rows = [
       ['Floor area', 'area', z.area],
       ['Power', 'kw', r.kwTotal],
       ['Power density', 'wm2', r.wm2],
-      ['HVAC', 'kw', r.kwAC],
-      ['Lighting', 'kw', r.kwLight],
-      ['Plug loads', 'kw', r.kwPlug],
-      ['Temperature', 'temp', r.T],
-      ['Humidity', 'pct', r.RH],
-      ['Light level', 'lux', r.lux]
+      [nm(!S || S.has.ac, 'HVAC'), 'kw', r.kwAC],
+      [nm(!S || S.has.light, 'Lighting'), 'kw', r.kwLight],
+      [nm(!S || S.has.plug, 'Plug loads'), 'kw', r.kwPlug],
+      ['Temperature' + (r.estT ? ' (estimated)' : ''), 'temp', r.T],
+      ['Humidity' + (r.estRH ? ' (estimated)' : ''), 'pct', r.RH],
+      ['Light level' + (r.estLux ? ' (estimated)' : ''), 'lux', r.lux]
     ];
     let html = rows.map(x => '<div class="row"><span>' + escapeHtml(x[0]) + '</span><b>' + escapeHtml(fmt(x[1], x[2])) +
       (hasAlt(x[1]) ? '<i>' + escapeHtml(fmtAlt(x[1], x[2])) + '</i>' : '') + '</b></div>').join('');
-    html += '<div class="row"><span>People</span><b>' + r.occ + '<i>of ' + z.cap + '</i></b></div>';
+    html += '<div class="row"><span>People' + (dataMode() ? ' (estimated)' : '') + '</span><b>' + r.occ + '<i>of ' + z.cap + '</i></b></div>';
+    if (dataMode() && z.src) html += '<div class="row"><span>Readings from</span><b>' + escapeHtml(z.src.id) + '<i>' + (layout.ref ? 'CU-BEMS zone' : 'nearest CU-BEMS zone, scaled by area') + '</i></b></div>';
     if (state.model) html += '<div class="row"><span>Rooms</span><b>' + z.nrooms + '</b></div>';
+    if (state.model && z.cond === false) html += '<div class="row"><span>Conditioning</span><b>None<i>no HVAC</i></b></div>';
     if (z.sensor) html += '<div class="row"><span>Sensor ID</span><b>' + escapeHtml(z.sensor) + '</b></div>';
     card.innerHTML = html;
   }
@@ -1386,12 +1700,37 @@ function renderControls() {
   $('#themeBtn').textContent = state.theme === 'light' ? 'Dark' : 'Light';
   let total = 0;
   zones.forEach(z => { total += z.area; });
-  $('#brandSub').textContent = layout.sub;
+  const dmode = dataMode();
+  const P0 = () => DATA.prep;
+  $('#brandSub').textContent = dmode ? 'CU-BEMS replay · Bangkok office, ' + metaRange(DATA.prep.cuMeta.start, DAYS) + ' · New York weather' : layout.sub;
   $('#simSummary').textContent = layout.name + ': ' + layout.floors.length + (layout.imported ? ' levels, ' : ' floors, ') + zones.length + ' zones, ' +
     fmt('area', total) + ' (' + fmtAlt('area', total) + '). ' + layout.desc;
+  const uncond = zones.filter(z => z.cond === false).length;
+  if (uncond) $('#simSummary').textContent += ' ' + uncond + ' unconditioned zones (roofs, shafts, stairs and similar) draw no HVAC.';
   const ft = f => DAY_NAMES[Math.floor(f.start / MIN_PER_DAY)] + ' ' + hourLabel(f.start) + ' to ' + DAY_NAMES[Math.floor(f.end / MIN_PER_DAY)] + ' ' + hourLabel(f.end);
-  $('#simNote').textContent = 'Planted faults: stuck cooling in ' + zoneLabel(zones[faults[0].zone]) + ' (' + ft(faults[0]) + '), cooling failure in ' +
-    zoneLabel(zones[faults[1].zone]) + ' (' + ft(faults[1]) + '). Seed ' + state.seed + '.';
+  if (dmode) {
+    const P = DATA.prep;
+    const parts = [];
+    if (P.tStart !== null) parts.push('Temperature and humidity are estimated before ' + DAY_NAMES[Math.floor(P.tStart / MIN_PER_DAY)] + ' ' + hourLabel(P.tStart) + ', when the sensors start reporting');
+    if (P.noTemp) parts.push(P.noTemp + ' of ' + P.zs.length + ' source zones have no temperature sensor and borrow their neighbours’ readings');
+    parts.push('people are inferred from lighting and plug load');
+    if (P.unmetered) parts.push(P.unmetered + ' source zones lack an HVAC, lighting or plug meter and show zero for it');
+    $('#simNote').textContent = 'Estimates: ' + parts.join('; ') + '. Outdoor weather is New York, ' + metaRange(P.wxMeta.start, DAYS) + ', so it does not drive the Bangkok building.';
+  } else {
+    $('#simNote').textContent = 'Planted faults: stuck cooling in ' + zoneLabel(zones[faults[0].zone]) + ' (' + ft(faults[0]) + '), cooling failure in ' +
+      zoneLabel(zones[faults[1].zone]) + ' (' + ft(faults[1]) + '). Seed ' + state.seed + '.';
+  }
+  const srcBtns = document.querySelectorAll('#srcSeg button');
+  srcBtns.forEach(b => {
+    b.setAttribute('aria-pressed', String(b.dataset.src === (dmode ? 'data' : 'sim')));
+    if (b.dataset.src === 'data') {
+      b.disabled = DATA.status !== 'ready';
+      b.title = DATA.status === 'ready' ? 'Replay measured office data' : (DATA.status === 'loading' ? 'Loading the data files' : DATA.note);
+    }
+  });
+  $('#srcNote').textContent = DATA.status === 'ready'
+    ? (dmode ? 'Replaying one week of measured data from the CU-BEMS office in Bangkok (' + P0().zs.length + ' zones, every 10 minutes) with New York weather outdoors.' : 'Simulated readings from an office schedule. Switch to CU-BEMS replay to see measured data.')
+    : (DATA.status === 'loading' ? 'Loading the CU-BEMS data files…' : DATA.note || 'Simulated readings.');
   $('#refBtn').disabled = layout.ref;
   $('#refBtn').textContent = layout.imported ? 'Remove model' : 'Reference office';
   updateLegend();
@@ -1575,6 +1914,22 @@ function wireInput() {
     if (e.key === 'Escape') closeHelp();
     if (e.key === 'Tab') { e.preventDefault(); helpClose.focus(); }
   });
+  function setSource(src) {
+    if (src === 'data' && DATA.status !== 'ready') return;
+    state.source = src;
+    state.wantData = src === 'data';
+    store('source', src);
+    state.sel = null;
+    buildScene();
+    renderControls();
+    updatePanel();
+    toast(src === 'data' ? 'Replaying CU-BEMS measurements' : 'Showing the simulated feed');
+  }
+  $('#srcSeg').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    if (b.dataset.src !== (dataMode() ? 'data' : 'sim')) setSource(b.dataset.src);
+  });
   function swapBuilding(seed) {
     state.seed = seed;
     store('seed', state.seed);
@@ -1617,13 +1972,18 @@ function wireInput() {
       return false;
     }
     state.model = normalizeModel(obj);
+    const switched = state.layer === 'power';
+    if (switched) {
+      state.layer = 'dens';
+      store('layer', state.layer);
+    }
     if (text.length < STORE_MODEL_CHARS) store('model', JSON.stringify(state.model));
     else store('model', '');
     buildScene();
     renderControls();
     updatePanel();
     const skipped = state.skippedRooms ? ' (' + state.skippedRooms + ' room outlines could not be drawn)' : '';
-    toast('Loaded ' + state.model.project + ': ' + layout.floors.length + ' levels, ' + zones.length + ' zones' + skipped);
+    toast('Loaded ' + state.model.project + ': ' + layout.floors.length + ' levels, ' + zones.length + ' zones' + skipped + (switched ? '. Colouring by density.' : ''));
     return true;
   }
   function readModelFile(file) {
@@ -1667,6 +2027,7 @@ function init() {
   const sp = parseInt(load('speed', 600), 10);
   state.speed = SPEEDS.indexOf(sp) >= 0 ? sp : 600;
   $('#footVersion').innerHTML = `${escapeHtml(TOOL_NAME)} · v${APP_VERSION} · <a href="https://axisbim.io" target="_blank" rel="noopener">Joe.K · axisbim.io</a>`;
+  state.wantData = load('source', 'data') !== 'sim';
   const savedModel = load('model', '');
   if (savedModel) {
     try {
@@ -1684,6 +2045,16 @@ function init() {
   applyCam();
   updatePanel();
   requestAnimationFrame(frame);
+  loadData().then(ok => {
+    if (ok && state.wantData) {
+      state.source = 'data';
+      state.sel = null;
+      buildScene();
+    }
+    renderControls();
+    updatePanel();
+    if (!ok && DATA.status === 'error') toast(DATA.note);
+  });
 }
 
 init();

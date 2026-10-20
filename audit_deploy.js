@@ -83,11 +83,13 @@ check('netlify.toml sets no-cache on index.html', /for = "\/index\.html"[\s\S]*?
 check('README.md exists with no emoji or badges',
   fs.existsSync(path.join(dir, 'README.md')) && !/[\u{1F300}-\u{1FAFF}]|!\[/u.test(read('README.md')));
 check('only expected files in repo folder',
-  fs.readdirSync(dir).every(f => ['index.html', 'netlify.toml', 'README.md', 'CHANGELOG.md', 'audit_deploy.js', 'test_runtime.py', 'test_exporter.py', 'node_modules', 'package.json', 'package-lock.json', 'vendor', 'shots', 'tools', 'data'].includes(f)));
+  fs.readdirSync(dir).every(f => ['index.html', 'netlify.toml', 'README.md', 'CHANGELOG.md', 'audit_deploy.js', 'test_runtime.py', 'test_data.py', 'test_exporter.py', 'node_modules', 'package.json', 'package-lock.json', 'vendor', 'shots', 'tools', 'data'].includes(f)));
 
 sectionHeader('v1.0.0 STRATA invariants');
 check('three.js pinned to r128 on cdnjs', /cdnjs\.cloudflare\.com\/ajax\/libs\/three\.js\/r128\/three\.min\.js/.test(html));
-check('no network calls to data sources yet (simulated feed only)', !/fetch\(|XMLHttpRequest|WebSocket/.test(script));
+check('only network call is one same-origin fetch of the two bundled data files (no sockets, beacons or remote URLs)',
+  (script.match(/fetch\(/g) || []).length === 1 && /function fetchJson\(url\)/.test(script) && !/XMLHttpRequest|WebSocket|sendBeacon/.test(script) &&
+  /cu: 'data\/cubems_week\.json', wx: 'data\/nyc_weather\.json'/.test(script));
 check('seeded PRNG mulberry32 defined', /function mulberry32\(/.test(script));
 check('no Math.random() in data generation (only in reseed)',
   (() => {
@@ -129,12 +131,12 @@ sectionHeader('v1.0.1 help panel');
 check('Help button and overlay exist', /id="helpBtn"/.test(html) && /<div class="modal" id="help" hidden>/.test(html));
 check('help overlay has dialog role, aria-modal and a labelled title', /id="help"[\s\S]*?role="dialog" aria-modal="true" aria-labelledby="helpTitle"/.test(html) && /id="helpTitle"/.test(html));
 check('help closes on Escape and returns focus to the Help button', /e\.key === 'Escape'\) closeHelp\(\)/.test(script) && /helpBtn\.focus\(\)/.test(script));
-check('help text states the data is simulated', /generated for now, not measured/.test(html) && /Everything here is simulated/.test(html));
+check('help text explains both data sources and their limits', /CU-BEMS replay is the default/.test(html) && /Simulated is generated from an office schedule/.test(html) && /does not explain its loads/.test(html));
 check('help alert thresholds match the code (2 kW after-hours HVAC, 26 C occupied)',
-  /r\.s < 0\.15 && r\.kwAC > 2\)/.test(script) && /r\.f > 0\.25 && r\.T > 26\)/.test(script) &&
+  /r\.s < 0\.15 && r\.kwAC > 2\)/.test(script) && /r\.f > 0\.25 && r\.T > 26 && !r\.estT\)/.test(script) &&
   /more than 2 kW of HVAC power/.test(html) && /above 26 °C \(79 °F\)/.test(html));
 check('help describes planted faults and points to the Simulation note instead of hard-coding days',
-  /Two faults are planted/.test(html) && /Simulation note at the bottom of the panel/.test(html) && !/Wednesday evening/.test(html));
+  /Two faults are planted/.test(html) && /note at the bottom of the panel says which zones and when/.test(html) && !/Wednesday evening/.test(html));
 check('help speed descriptions match SPEEDS', /const SPEEDS = \[1, 60, 600, 3600\]/.test(script) && /60× is one simulated minute per second, 600× is ten minutes per second, 3600× is one hour per second/.test(html));
 check('help card scrolls inside the viewport', /\.help-card\{[^}]*max-height:calc\(100dvh - 32px\);overflow-y:auto/.test(html));
 check('every layer has a hover hint', (script.match(/hint: '/g) || []).length === 5);
@@ -174,7 +176,7 @@ check('exporter documents Revit Architecture Rooms and the two optional paramete
 check('viewer validates a model before using it (checkModel before normalizeModel)', /const err = checkModel\(obj\);\s*if \(err\) \{[\s\S]*?return false;[\s\S]*?state\.model = normalizeModel\(obj\)/.test(script));
 check('saved model is re-validated on load', /if \(!checkModel\(o\)\) state\.model = normalizeModel\(o\)/.test(script));
 check('model limits defined (zones, points, bytes)', /MAX_MODEL_ZONES = 600/.test(script) && /MAX_MODEL_POINTS/.test(script) && /MAX_MODEL_BYTES = 25 \* 1024 \* 1024/.test(script));
-check('model files are read locally with FileReader, never fetched', /new FileReader\(\)/.test(script) && !/fetch\(/.test(script));
+check('model files are read locally with FileReader, never fetched', /new FileReader\(\)/.test(script) && /function fetchJson\(url\)/.test(script) && !/fetch\(file|fetch\(obj|fetch\(text/.test(script));
 check('zone names from the model are escaped before innerHTML', /escapeHtml\(z\.sensor\)/.test(script) && /escapeHtml\(zoneLabel\(z\) \+ ' · ' \+ a\.text\)/.test(script));
 check('imported zones use the same simulation fields as generated zones (profile draw order matches buildZones)',
   /const density = 8 \+ rnd\(\) \* 6;\s*return \{/.test(script) && /util: 0\.55 \+ 0\.45 \* rnd\(\),\s*arrive: \(rnd\(\) - 0\.5\) \* 40,\s*lightW: 6 \+ rnd\(\) \* 4,\s*plugW: 4 \+ rnd\(\) \* 5,\s*acEff: 0\.8 \+ rnd\(\) \* 0\.5,\s*bias: \(rnd\(\) - 0\.5\) \* 1\.6,\s*win: rnd\(\)/.test(script));
@@ -190,6 +192,51 @@ check('W/ft2 and W/m2 conversion matches the area conversion', /kind === 'wm2'\)
 check('building density is area-weighted, not a plain mean', /L\.agg === 'area'/.test(script) && /sum \+= v \* zones\[i\]\.area/.test(script));
 check('density colour range computed per building', /\['power', 'hvac', 'dens'\]\.forEach/.test(script));
 check('help explains Density', /<dt>Density<\/dt>/.test(html) && /area-weighted/.test(html));
+
+sectionHeader('v1.2.2 unconditioned spaces');
+check('name heuristic covers roof, shaft and stair', /const UNCOND_RE = \/[^\n]*roof\|shaft\|stair/.test(script));
+check('explicit conditioned flag beats the name guess', /mz\.conditioned === true \? true : mz\.conditioned === false \? false : !UNCOND_RE/.test(script));
+check('sample() zeroes HVAC for unconditioned zones and lets temperature follow the weather', /kwAC = cond \? kwAC \* \(1 - 0\.8 \* fail\)/.test(script) && /: to \+ 1\.5 \* day \+ noise/.test(script));
+check('faults are drawn from conditioned zones only', /if \(z\.cond !== false\) pool\.push\(i\)/.test(script) && /buildFaults\(state\.seed, zones\)/.test(script));
+check('generated zones are always conditioned', /win: rnd\(\),\s*cond: true,/.test(script));
+check('loading a model switches Power to Density', /const switched = state\.layer === 'power';/.test(script) && /state\.layer = 'dens'/.test(script));
+check('exporter reads STRATA_Conditioned and writes an optional conditioned field', /PARAM_COND = "STRATA_Conditioned"/.test(exporter) && /"conditioned": None/.test(exporter) && /def parse_cond/.test(exporter));
+check('help documents the unconditioned rule and the override parameter', /treated as unconditioned/.test(html) && /STRATA_Conditioned/.test(html));
+
+sectionHeader('v1.2.3 stepped-site level heights (found loading the real Snowdon export)');
+check('viewer sets level height from the next level at least MIN_STOREY higher', /const MIN_STOREY = 2;/.test(script) && /if \(d >= MIN_STOREY\) return clamp\(d, MIN_LEVEL_H, MAX_LEVEL_H\)/.test(script));
+check('normalizeModel applies storeyHeights so old files and the saved copy are corrected', /const hs = storeyHeights\(levels\);\s*levels\.forEach\(\(l, i\) => \{ l\.height = hs\[i\]; \}\);/.test(script));
+check('exporter uses the same rule and constants', /MIN_STOREY = 2\.0/.test(exporter) && /if d >= MIN_STOREY:/.test(exporter) && /MIN_LEVEL_H = 2\.4/.test(exporter) && /MAX_LEVEL_H = 6\.0/.test(exporter));
+
+sectionHeader('v1.3.0 CU-BEMS replay');
+const cubemsPath = path.join(dir, 'data', 'cubems_week.json');
+const wxPath = path.join(dir, 'data', 'nyc_weather.json');
+check('both data files ship in data/', fs.existsSync(cubemsPath) && fs.existsSync(wxPath));
+const cuData = fs.existsSync(cubemsPath) ? JSON.parse(fs.readFileSync(cubemsPath, 'utf8')) : null;
+const wxData = fs.existsSync(wxPath) ? JSON.parse(fs.readFileSync(wxPath, 'utf8')) : null;
+check('CU-BEMS file is one week at 10 minute steps and every series has 1008 samples',
+  !!cuData && cuData.meta.samples === 1008 && cuData.meta.step_min === 10 &&
+  cuData.zones.every(z => ['ac', 'light', 'plug', 'temp', 'rh', 'lux'].every(k => z[k] === undefined || z[k].length === 1008)));
+check('REF_FLOORS equals the CU-BEMS zones per floor', !!cuData && (() => {
+  const m = script.match(/const REF_FLOORS = \[([^\]]+)\]/);
+  const want = {};
+  cuData.zones.forEach(z => { want[z.floor] = (want[z.floor] || 0) + 1; });
+  const w = Object.keys(want).map(Number).sort((x, y) => x - y).map(k => want[k]);
+  return !!m && m[1].split(',').map(x => parseInt(x, 10)).join() === w.join();
+})());
+check('weather file is a week of hourly temperature and humidity', !!wxData && wxData.meta.step_min === 60 && wxData.tempC.length === 168 && wxData.rh.length === 168);
+check('sample() routes to the data feed only when data mode is ready', /function sample\(z, m\) \{\s*return dataMode\(\) \? dataSample\(z, m\) : simSample\(z, m\);/.test(script) && /function dataMode\(\) \{ return state\.source === 'data' && DATA\.status === 'ready'/.test(script));
+check('data is only fetched over http, never from file://', /location\.protocol === 'file:'/.test(script) && /DATA\.status = 'unavailable'/.test(script));
+check('bad or missing data falls back to the simulation', /DATA\.status = 'error'/.test(script) && /Showing the simulation instead/.test(script) && /function checkData\(cu, wx\)/.test(script) && /const err = checkData\(res\[0\], res\[1\]\)/.test(script));
+check('flat sensor runs are masked, not trusted (FLAT_RUN)', /const FLAT_RUN = 36/.test(script) && /i - s0 >= FLAT_RUN/.test(script));
+check('estimated temperature and humidity are flagged and never raise Running warm', /estT: cond && S\.tEst\[near\] === 1/.test(script) && /estRH: cond/.test(script) && /!r\.estT\)/.test(script));
+check('zone card labels estimated and unmetered values', /\(estimated\)/.test(script) && /\(not metered\)/.test(script) && /Readings from/.test(script));
+check('missing meters read zero instead of an invented load', /S\[ch\]\[i\] = isNum\(z\[ch\]\[i\]\) && z\[ch\]\[i\] > 0 \? z\[ch\]\[i\] : 0/.test(script));
+check('people are inferred from lighting plus plug load and labelled estimated', /lp\[i\] = S\.light\[i\] \+ S\.plug\[i\]/.test(script) && /People \(estimated\)/.test(script));
+check('weather and building origin are stated honestly in the UI and help', /New York weather/.test(script) && /Bangkok/.test(script) && /does not explain its loads/.test(html) && /does not drive the Bangkok building/.test(script));
+check('imported zones borrow a source zone by floor and scale by area', /z\.index % list\.length/.test(script) && /z\.area \/ \(REF_AREA \/ list\.length\)/.test(script));
+check('Data source switch exists and the choice is remembered', /id="srcSeg"/.test(html) && /store\('source', src\)/.test(script) && /load\('source', 'data'\)/.test(script));
+check('test_data.py exists', fs.existsSync(path.join(dir, 'test_data.py')));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
