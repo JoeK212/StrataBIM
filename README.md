@@ -30,4 +30,11 @@ data/cubems_week.json and data/nyc_weather.json are loaded when the folder is se
 
 tools/prep_cubems.py cuts one week out of the CU-BEMS CSVs into data/cubems_week.json (run it with --inspect first to see how the columns are recognised). tools/fetch_weather.py downloads a week of NYC weather from Open-Meteo into data/nyc_weather.json. Both use only the Python standard library.
 
-What to know about the data: the building is in Bangkok and the weather is New York, so the weather is context and does not drive the loads. Temperature and humidity sensors only start reporting around Wednesday 3 PM, floor 1 has none, and some zones lack an HVAC, lighting or plug meter. STRATA estimates the gaps, labels every estimate in the zone card and the Building note, and shows unmetered loads as zero. People are inferred from lighting and plug load. Run `python test_data.py` to check all of this.
+What to know about the data: the building is in Bangkok and the weather is New York, so the weather is context and does not drive the loads. Temperature and humidity sensors only start reporting around Wednesday 3 PM, floor 1 has none, and some zones lack an HVAC, lighting or plug meter. STRATA estimates the gaps, labels every estimate in the zone card and the Building note, and shows unmetered loads as zero. People are inferred from lighting and plug load.
+
+## Credits
+
+- Measured building data: CU-BEMS, Pipattanasomporn et al., "CU-BEMS, smart building electricity consumption and indoor environmental sensor datasets", Scientific Data 7, 241 (2020), https://doi.org/10.1038/s41597-020-00582-3 (article CC BY 4.0). Dataset: https://doi.org/10.6084/m9.figshare.11726517. The article does not state a licence for the CSV files, so check the Figshare record before redistributing the data. data/cubems_week.json is one reshaped week of it.
+- Weather: Open-Meteo.com historical data, CC BY 4.0, https://open-meteo.com/. Its free API is for non-commercial use, so a commercial deployment needs their paid plan.
+- three.js r128, MIT licence, bundled in vendor/.
+- Models you load stay in your browser and are remembered locally until removed.

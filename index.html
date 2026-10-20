@@ -8,7 +8,14 @@ Joe.K · axisbim.io
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="STRATA is a browser dashboard that colours a 3D building model by live power, HVAC, temperature and occupancy data.">
+<meta name="description" content="STRATA is a browser dashboard that colours a 3D building model by power, HVAC, temperature or occupancy, and replays a week of measured office data on a timeline.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="STRATA · Building dashboard">
+<meta property="og:description" content="STRATA is a browser dashboard that colours a 3D building model by power, HVAC, temperature or occupancy, and replays a week of measured office data on a timeline.">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="STRATA · Building dashboard">
+<meta name="twitter:description" content="STRATA is a browser dashboard that colours a 3D building model by power, HVAC, temperature or occupancy, and replays a week of measured office data on a timeline.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230E1220'/%3E%3Crect x='6' y='6' width='20' height='4' fill='%236A4CF0'/%3E%3Crect x='6' y='12' width='20' height='4' fill='%23E85FA0'/%3E%3Crect x='6' y='18' width='20' height='4' fill='%236A4CF0'/%3E%3Crect x='6' y='24' width='20' height='3' fill='%23FFC857'/%3E%3C/svg%3E">
 <meta name="theme-color" content="#0E1220" id="themeColorMeta">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -375,6 +382,14 @@ button:disabled:hover{border-color:var(--line)}
     </dl>
     <p>To use the replay, serve the folder over http (for example python -m http.server 8888). Opening index.html straight from disk works, but only with the simulated feed.</p>
 
+    <h3 id="credits">Credits</h3>
+    <ul>
+      <li>Measured building data: CU-BEMS, from Pipattanasomporn et al., <a href="https://doi.org/10.1038/s41597-020-00582-3" target="_blank" rel="noopener">CU-BEMS, smart building electricity consumption and indoor environmental sensor datasets</a>, Scientific Data 7, 241 (2020, CC BY 4.0). Dataset on <a href="https://doi.org/10.6084/m9.figshare.11726517" target="_blank" rel="noopener">Figshare</a>. STRATA shows one week of it, reshaped and with gaps estimated as described above; it is not an official presentation of the dataset.</li>
+      <li>Weather: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> historical data, licensed CC BY 4.0, shown for Central Park, New York.</li>
+      <li>3D: three.js r128 (MIT licence), bundled with this page.</li>
+    </ul>
+    <p>Models you load stay in your browser. They are not uploaded anywhere, and the last one is remembered on this device until you remove it.</p>
+
     <h3>Terms</h3>
     <dl>
       <dt>kW and kWh</dt>
@@ -391,7 +406,7 @@ button:disabled:hover{border-color:var(--line)}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.3';
 const TOOL_NAME = 'STRATA';
 
 const MIN_PER_DAY = 1440;
@@ -1790,9 +1805,14 @@ function renderControls() {
   zones.forEach(z => { total += z.area; });
   const dmode = dataMode();
   const P0 = () => DATA.prep;
-  $('#brandSub').textContent = dmode ? 'CU-BEMS replay · Bangkok office, ' + metaRange(DATA.prep.cuMeta.start, DAYS) + ' · New York weather' : layout.sub;
+  $('#brandSub').textContent = dmode
+    ? (layout.imported
+      ? layout.name + ' · Borrowed CU-BEMS readings (Bangkok, ' + metaRange(DATA.prep.cuMeta.start, DAYS) + ') · New York weather'
+      : 'CU-BEMS replay · Bangkok office, ' + metaRange(DATA.prep.cuMeta.start, DAYS) + ' · New York weather')
+    : layout.sub;
+  const lDesc = dmode && layout.imported ? layout.desc.replace('The readings are still simulated.', 'The readings are not from your building: each zone borrows a CU-BEMS Bangkok zone.') : layout.desc;
   $('#simSummary').textContent = layout.name + ': ' + layout.floors.length + (layout.imported ? ' levels, ' : ' floors, ') + zones.length + ' zones, ' +
-    fmt('area', total) + ' (' + fmtAlt('area', total) + '). ' + layout.desc;
+    fmt('area', total) + ' (' + fmtAlt('area', total) + '). ' + lDesc;
   const uncond = zones.filter(z => z.cond === false).length;
   if (uncond) $('#simSummary').textContent += ' ' + uncond + ' unconditioned zones (roofs, shafts, stairs and similar) draw no HVAC.';
   const ft = f => DAY_NAMES[Math.floor(f.start / MIN_PER_DAY)] + ' ' + hourLabel(f.start) + ' to ' + DAY_NAMES[Math.floor(f.end / MIN_PER_DAY)] + ' ' + hourLabel(f.end);
@@ -1997,6 +2017,12 @@ function wireInput() {
     helpBtn.focus();
   }
   helpBtn.addEventListener('click', openHelp);
+  $('#creditsLink').addEventListener('click', e => {
+    e.preventDefault();
+    openHelp();
+    const card = helpEl.querySelector('.help-card');
+    card.scrollTop = $('#credits').offsetTop - 12;
+  });
   helpClose.addEventListener('click', closeHelp);
   helpEl.addEventListener('click', e => { if (e.target === helpEl) closeHelp(); });
   document.addEventListener('keydown', e => {
@@ -2124,7 +2150,7 @@ function init() {
   state.layer = LAYERS[savedLayer] ? savedLayer : 'power';
   const sp = parseInt(load('speed', 600), 10);
   state.speed = SPEEDS.indexOf(sp) >= 0 ? sp : 600;
-  $('#footVersion').innerHTML = `${escapeHtml(TOOL_NAME)} · v${APP_VERSION} · <a href="https://axisbim.io" target="_blank" rel="noopener">Joe.K · axisbim.io</a>`;
+  $('#footVersion').innerHTML = `${escapeHtml(TOOL_NAME)} · v${APP_VERSION} · <a href="https://axisbim.io" target="_blank" rel="noopener">Joe.K · axisbim.io</a> · Data: <a href="https://doi.org/10.1038/s41597-020-00582-3" target="_blank" rel="noopener">CU-BEMS</a> · <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · <a href="#credits" id="creditsLink">Credits</a>`;
   state.wantData = load('source', 'data') !== 'sim';
   state.mark = load('mark', 'on') !== 'off';
   const savedModel = load('model', '');
