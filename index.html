@@ -196,6 +196,15 @@ button:disabled:hover{border-color:var(--line)}
 .help-card li{margin-bottom:4px}
 .help-card .sw{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px;border:1px solid var(--line)}
 .help-card .close{position:sticky;bottom:-22px;margin:16px 0 -22px;padding:12px 0;background:var(--card);display:flex;justify-content:flex-end}
+#mobileBlock{display:none;position:fixed;inset:0;z-index:200;background:var(--paper);color:var(--ink);flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px 24px;gap:10px}
+#mobileBlock h2{margin:0 0 8px;font-size:28px;font-weight:700;letter-spacing:0.14em}
+#mobileBlock p{margin:0;max-width:320px;color:var(--muted);font-size:15px}
+#mobileBlock span{margin-top:24px;font-size:12px;color:var(--muted)}
+#mobileBlock a{color:inherit}
+@media (max-width:760px){
+  #mobileBlock{display:flex}
+  .shell,.toast,.modal{display:none !important}
+}
 @media (max-width:860px){
   .shell{height:auto;min-height:100dvh}
   .main{
@@ -212,6 +221,12 @@ button:disabled:hover{border-color:var(--line)}
 </style>
 </head>
 <body>
+<div id="mobileBlock" role="alert">
+  <h2>STRATA</h2>
+  <p>This tool needs a tablet or desktop display for the 3D model and panels together.</p>
+  <p>Please open it on a larger screen.</p>
+  <span>Joe.K · <a href="https://axisbim.io" target="_blank" rel="noopener">axisbim.io</a></span>
+</div>
 <div class="shell">
   <header class="top">
     <div class="brand">
@@ -311,21 +326,12 @@ button:disabled:hover{border-color:var(--line)}
     </div>
   </div>
 </div>
-<div class="modal" id="mobileGate" hidden>
-  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="mobileGateTitle">
-    <h2 id="mobileGateTitle" style="margin:0 0 8px;font-size:18px">Not supported on mobile</h2>
-    <p>STRATA is built for a desktop or laptop screen. The 3D model, panels and timeline need more room and a mouse or trackpad, so it is not supported on phones or tablets. Open this page on a computer for the full dashboard.</p>
-    <div class="modal-actions">
-      <button type="button" id="mobileContinue" aria-pressed="true">Continue anyway</button>
-    </div>
-  </div>
-</div>
 <div class="modal" id="help" hidden>
   <div class="modal-card help-card" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
     <h2 id="helpTitle">How to read STRATA</h2>
     <p class="lead">A 3D model of a seven-floor office. Each box is a zone, coloured by the layer you pick. By default it replays one week of measured data from an office in Bangkok; a simulated feed is the alternative (see About the data).</p>
 
-    <p>STRATA is built for desktop browsers. It is not supported on phones or tablets.</p>
+    <p>STRATA needs a tablet or desktop display. On a phone-sized screen it shows a notice asking for a larger screen.</p>
 
     <h3>Move around</h3>
     <ul>
@@ -417,7 +423,7 @@ button:disabled:hover{border-color:var(--line)}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '1.4.6';
+const APP_VERSION = '1.4.7';
 const TOOL_NAME = 'STRATA';
 
 const MIN_PER_DAY = 1440;
@@ -1881,6 +1887,10 @@ function resize() {
 function frame(now) {
   const dt = Math.min(0.1, (now - state.lastFrame) / 1000 || 0);
   state.lastFrame = now;
+  if (window.matchMedia('(max-width: 760px)').matches) {
+    requestAnimationFrame(frame);
+    return;
+  }
   if (state.playing) {
     state.t += dt * state.speed / 60;
     if (state.t >= TOTAL_MIN) {
@@ -2154,25 +2164,6 @@ function wireInput() {
   if (window.ResizeObserver) new ResizeObserver(resize).observe($('#stage'));
 }
 
-function isMobileDevice() {
-  const ua = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(navigator.userAgent || '');
-  const touchOnly = !!(window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches);
-  return ua || touchOnly;
-}
-
-function showMobileGate() {
-  let skipped = false;
-  try { skipped = sessionStorage.getItem('strata.mobileOk') === '1'; } catch (e) { }
-  if (skipped || !isMobileDevice()) return;
-  const gate = $('#mobileGate');
-  gate.hidden = false;
-  $('#mobileContinue').addEventListener('click', () => {
-    gate.hidden = true;
-    try { sessionStorage.setItem('strata.mobileOk', '1'); } catch (e) { }
-  });
-  $('#mobileContinue').focus();
-}
-
 function init() {
   state.seed = parseInt(load('seed', DEFAULT_SEED), 10) || DEFAULT_SEED;
   state.units = load('units', 'imperial') === 'metric' ? 'metric' : 'imperial';
@@ -2200,7 +2191,6 @@ function init() {
   applyCam();
   updatePanel();
   requestAnimationFrame(frame);
-  showMobileGate();
   loadData().then(ok => {
     if (ok && state.wantData) {
       state.source = 'data';

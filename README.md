@@ -6,7 +6,7 @@ It replays one week of measured office data from the CU-BEMS dataset (7 floors, 
 
 ## Run it
 
-STRATA is built for desktop browsers. On phones and tablets it shows a not-supported notice, which can be dismissed.
+STRATA needs a tablet or desktop display. Below 760 px wide it shows a full-screen notice asking for a larger screen.
 
 Serve the folder over http, for example `python -m http.server 8888`, then open http://localhost:8888. Opened straight from disk, STRATA falls back to the simulation because browsers block the data files. To deploy, use Netlify with the included `netlify.toml`.
 
