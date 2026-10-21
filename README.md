@@ -6,6 +6,8 @@ It replays one week of measured office data from the CU-BEMS dataset (7 floors, 
 
 ## Run it
 
+STRATA is built for desktop browsers. On phones and tablets it shows a not-supported notice, which can be dismissed.
+
 Serve the folder over http, for example `python -m http.server 8888`, then open http://localhost:8888. Opened straight from disk, STRATA falls back to the simulation because browsers block the data files. To deploy, use Netlify with the included `netlify.toml`.
 
 ## Your own Revit model
@@ -27,6 +29,3 @@ The building is in Bangkok and the weather is New York, so the weather is contex
 - CU-BEMS: Pipattanasomporn et al., *CU-BEMS, smart building electricity consumption and indoor environmental sensor datasets*, Scientific Data 7, 241 (2020), [doi:10.1038/s41597-020-00582-3](https://doi.org/10.1038/s41597-020-00582-3) (CC BY 4.0). Dataset: [doi:10.6084/m9.figshare.11726517](https://doi.org/10.6084/m9.figshare.11726517) (CC BY 4.0). Changes made: `data/cubems_week.json` is one week of it, reshaped, with gaps estimated in the app. Not endorsed by the authors.
 - Weather: [Open-Meteo.com](https://open-meteo.com/), CC BY 4.0. The free API is non-commercial.
 - three.js r128 (MIT), loaded from cdnjs.
-
----
-Joe.K · [axisbim.io](https://axisbim.io)
